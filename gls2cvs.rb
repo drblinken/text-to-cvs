@@ -26,7 +26,7 @@ class Converter
   def initialize(lines:, filename:, year: nil)
     @current_line = 0
     @lines = lines # .map(&:strip)
-    @result = []
+    @entries = []
     @filename = filename
     @year = year
     @data = {}
@@ -101,19 +101,16 @@ class Converter
   def set_balance(balance)
     if @filetype == :new
       alt_neu = balance[0][0..2]
-      sign = balance[3] == "S" ? "-" : ""
     else
       alt_neu = balance[0]
-      sign = balance[3] == "-" ? "-" : ""
     end
-    amount_s = "#{sign}#{balance[2]}"
-    amount = amount_s.gsub(".","").gsub(",",".").to_f
+    amount = parse_amount(balance[2], balance[3])
     @data[alt_neu] = amount
   end
   def extract_before_after
     alt_neu_re = @filetype == :new ? RE_ALT_NEU_N : RE_ALT_NEU_O
     balances = @lines.join.scan(alt_neu_re).uniq
-    puts balances.inspect
+    # puts balances.inspect
     allowed_matches = 2
     unless balances.size == allowed_matches
       STDERR.puts "#{@filename} (#{@filetype}): couldn't find exactly #{allowed_matches} candidates for alt/neu: #{balances.inspect}"
@@ -123,10 +120,27 @@ class Converter
       end
     end
     puts "#{@data}"
-  #  puts balances.inspect
+    puts balances.inspect
     # puts "#{@filename} (#{@filetype}): #{@data}"
   end
 
+  def check_balance
+    bookings = @entries.map{|e| parse_amount(e.betrag, e.haben_soll)}
+    bookings_sum = bookings.reduce(:+)
+    delta_balances = @data["neu"] - @data["alt"]
+    diff = delta_balances - bookings_sum
+    puts "balances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum}, diff: #{diff}"
+  end
+  def parse_amount(betrag, haben_soll)
+    if @filetype == :new
+      sign = haben_soll == "S" ? "-" : ""
+    else
+      sign = haben_soll == "-" ? "-" : ""
+    end
+    amount_s = "#{sign}#{betrag}"
+    amount = amount_s.gsub(".","").gsub(",",".").to_f
+    amount
+  end
 
   # was needed for paypal dates
   def translate_month(date)
@@ -150,7 +164,8 @@ class Converter
       lines = read_lines_till_next_header()
       entry.who = lines.shift
       entry.verwendungszweck = "\"#{lines.join(" ")}\""
-      @result << entry.values.map{|v| v.nil? ? "" : v.strip}.join(DEL)
+
+      @entries << entry
     end
 
 #  @result << "#{user}#{DEL}#{datum}#{@year}#{DEL}#{type}#{DEL}#{vorzeichen}#{amount}#{DEL}#{currency}#{DEL}#{notes}"
@@ -158,11 +173,7 @@ class Converter
 
   # general
 
-  def add_header
-    entry = GLS_Entry.new
-    @result << entry.members.join(DEL)
-    #@result << "User#{DEL}Datum#{DEL}Type#{DEL}Amount#{DEL}Currency#{DEL}Notes"
-  end
+
 
   def current_line()
     return @lines[@current_line]
@@ -176,13 +187,17 @@ class Converter
   end
 
   def result
-    @result.join("\n")
+    result = []
+    result << GLS_Entry.new.members.join(DEL)
+    result << @entries.map{|e| e.values.map{|v| v.nil? ? "" : v.strip}.join(DEL)}
+    result.join("\n")
   end
 
   def parse
     while (has_entry) do
       read_entry
     end
+    check_balance
   end
 
 end
@@ -204,7 +219,7 @@ files.each do | filename |
     lines = f.readlines
 
     converter = Converter.new(lines: lines,filename: filename)
-    converter.add_header
+
     converter.parse
     File.open(output_filename,"w") do | outputfile |
       outputfile.write converter.result

@@ -1,10 +1,17 @@
 #!/Users/kleinen/.rvm/rubies/ruby-3.1.3/bin/ruby
+# ./gls2cvs.rb test/real_data/test.txt
+
 if ARGV.size < 1
-  puts "usage: ./paypal2cvs.rb <filename> [<year>]"
+  puts "usage: ./gls2cvs.rb <filename> [<year>]"
   puts "year will be appended to payment date if given"
   exit 1
 end
 DEL = "\t"
+# FIRST_LINE_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
+FIRST_LINE_REGEX = /^(\d\d\.\d\d\.) (\d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
+# try this with simple variations to make sure all entries are matched
+# START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)/
+START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.).*(H|S)$/
 filename = ARGV[0]
 year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 # puts "hi"
@@ -21,9 +28,10 @@ class Converter
     @year = year
     @datemap = {"März" => "May","Dez" => "Dec", "Juni" => "June", "Juli" => "July", "Okt" => "Oct"}
   end
-  def forward_to_user()
+
+  def has_entry()
     # puts "current_line: #{current_line}"
-    while (forward && current_line != "user") do
+    while (forward && !(START_ID_REGEX =~ current_line)) do
   #    puts "current_line: #{current_line}"
     end
     return !reached_end
@@ -33,35 +41,28 @@ class Converter
     result = date
     @datemap.each{|k,v| result = result.gsub(k,v)}
     result
-   end
+  end
+
+  GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, keyword_init: true)
 
   def read_entry()
-    forward
-    user = current_line
-
-    forward
-    datum_type = current_line
-    m = datum_type.match(/(.*)·(.*)/)
-    datum = translate_month(m[1])
-    type = m[2]
-
-    forward
-    amount_currency = current_line
-    m = amount_currency.match(/^([-\+]) ([,\d\+]+)(\w+)$/)
-    puts "no match! #{amount_currency}" unless m
-    plus_minus = m[1]
-    amount = m[2]
-    currency = m[3]
-    zahlungseingang = plus_minus == "+"
-    vorzeichen = zahlungseingang ? "- " : ""
-    notes = zahlungseingang ? "Zahlungseingang!" : ""
-#    @result << "#{user};#{datum_type};#{amount}"
-#    @result << "#{user};#{datum}#{@year};#{type};#{vorzeichen}#{amount};#{currency};#{notes}"
-    @result << "#{user}#{DEL}#{datum}#{@year}#{DEL}#{type}#{DEL}#{vorzeichen}#{amount}#{DEL}#{currency}#{DEL}#{notes}"
+    header = current_line
+    # https://ruby-doc.org/core-3.1.1/Struct.html
+    #GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, keyword_init: true)
+    m = FIRST_LINE_REGEX.match(current_line)
+    unless m
+      STDERR.puts "could not match #{current_line}"
+    else
+      entry = GLS_Entry.new(buchungs_tag: m[1], wert: m[2], vorgang: m[3], betrag: m[4], haben_soll: m[5] )
+      @result << entry.values.join(DEL)
+    end
+#  @result << "#{user}#{DEL}#{datum}#{@year}#{DEL}#{type}#{DEL}#{vorzeichen}#{amount}#{DEL}#{currency}#{DEL}#{notes}"
   end
 
   def add_header
-    @result << "User#{DEL}Datum#{DEL}Type#{DEL}Amount#{DEL}Currency#{DEL}Notes"
+    entry = GLS_Entry.new
+    @result << entry.members.join(DEL)
+    #@result << "User#{DEL}Datum#{DEL}Type#{DEL}Amount#{DEL}Currency#{DEL}Notes"
   end
 
   def current_line()
@@ -80,7 +81,7 @@ class Converter
   end
 
   def parse
-    while (forward_to_user) do
+    while (has_entry) do
       read_entry
     end
   end

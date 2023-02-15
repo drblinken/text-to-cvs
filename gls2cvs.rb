@@ -119,17 +119,17 @@ class Converter
           set_balance(m)
       end
     end
-    puts "#{@data}"
-    puts balances.inspect
+    # puts "#{@data}"
+    # puts balances.inspect
     # puts "#{@filename} (#{@filetype}): #{@data}"
   end
 
   def check_balance
     bookings = @entries.map{|e| parse_amount(e.betrag, e.haben_soll)}
-    bookings_sum = bookings.reduce(:+)
-    delta_balances = @data["neu"] - @data["alt"]
-    diff = delta_balances - bookings_sum
-    puts "balances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum}, diff: #{diff}"
+    bookings_sum = bookings.reduce(:+).round(2)
+    delta_balances = (@data["neu"] - @data["alt"]).round(2)
+    diff = (delta_balances - bookings_sum).round(2)
+    puts "#{@filename} :\nbalances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum}, diff: #{diff}"
   end
   def parse_amount(betrag, haben_soll)
     if @filetype == :new

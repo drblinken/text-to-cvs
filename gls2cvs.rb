@@ -14,7 +14,7 @@ OLD_FIRST_LINE_REGEX = /^(\d\d.\d\d.) +(Wertstellung: (\d\d.\d\d.))?(.*) ([0-9,.
 # try this with simple variations to make sure all entries are matched
 # START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)/
 START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.).*(H|S)$/
-OLD_START_ID_REGEX = /^(\d\d\.\d\d\.).*([+-])/
+OLD_START_ID_REGEX = /^(\d\d\.\d\d\.) .*([+-])/
 dirname = ARGV[0]
 year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 # puts "hi"
@@ -23,12 +23,15 @@ year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 
 class Converter
 
-  def initialize(lines,year)
+  def initialize(lines:, filename:, year: nil)
     @current_line = 0
-    @lines = lines.map(&:strip)
+    @lines = lines # .map(&:strip)
     @result = []
+    @filename = filename
     @year = year
     @datemap = {"März" => "May","Dez" => "Dec", "Juni" => "June", "Juli" => "July", "Okt" => "Oct"}
+    determine_old_or_new
+    extract_year
   end
 
   def has_entry()
@@ -48,6 +51,47 @@ class Converter
     result
   end
 
+  # methods that search in all lines
+
+    def determine_old_or_new
+      if @lines.any? { | line | FIRST_LINE_REGEX =~ line }
+        @filetype = :new
+        @first_line_regex = FIRST_LINE_REGEX
+        @start_id_regex = START_ID_REGEX
+        return :new
+      else
+        if @lines.any? { | line | OLD_FIRST_LINE_REGEX =~ line }
+          @filetype = :old
+          @first_line_regex = OLD_FIRST_LINE_REGEX
+          @start_id_regex = OLD_START_ID_REGEX
+          return :old
+        end
+      end
+      throw Exception.new("no matching lines found")
+    end
+
+    RE_MONTH_YEAR = /\s(\d\d?)\/(\d\d\d\d)[\n\s]*$/
+    RE_MY_CAND = /(\d\d?)\/(\d\d\d\d)/
+
+    def extract_year
+      # puts @filename
+      candidates = @lines.select {|l| l =~ RE_MY_CAND}
+      month_year = @lines.map do | line |
+        m = RE_MONTH_YEAR.match(line)
+        # puts line if m
+        m ? [m[1],m[2]] : nil
+      end.compact
+      one_month_year = month_year.uniq
+      if one_month_year.size != 1
+        STDERR.puts "#{@filename} (#{@filetype}):\ncould not find unambiguous month/year: #{month_year.inspect}"
+        STDERR.puts candidates.inspect
+      else
+        @month = one_month_year[0][0]
+        @year= one_month_year[0][1]
+      end
+      one_month_year
+    end
+
   # was needed for paypal dates
   def translate_month(date)
     result = date
@@ -57,22 +101,26 @@ class Converter
 
   # https://ruby-doc.org/core-3.1.1/Struct.html
   GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
-
+  def add_year(date)
+    "#{date}#{@year}"
+  end
   def read_entry()
     header = current_line
     m = @first_line_regex.match(current_line)
     unless m
       STDERR.puts "could not match #{current_line}"
     else
-      entry = GLS_Entry.new(buchungs_tag: m[1], wert: m[2], vorgang: m[3], betrag: m[4], haben_soll: m[5] )
+      entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3], betrag: m[4], haben_soll: m[5] )
       lines = read_lines_till_next_header()
       entry.who = lines.shift
       entry.verwendungszweck = "\"#{lines.join(" ")}\""
-      @result << entry.values.join(DEL)
+      @result << entry.values.map{|v| v.nil? ? "" : v.strip}.join(DEL)
     end
 
 #  @result << "#{user}#{DEL}#{datum}#{@year}#{DEL}#{type}#{DEL}#{vorzeichen}#{amount}#{DEL}#{currency}#{DEL}#{notes}"
   end
+
+  # general
 
   def add_header
     entry = GLS_Entry.new
@@ -95,23 +143,7 @@ class Converter
     @result.join("\n")
   end
 
-  def determine_old_or_new
-    if @lines.any? { | line | FIRST_LINE_REGEX =~ line }
-      @first_line_regex = FIRST_LINE_REGEX
-      @start_id_regex = START_ID_REGEX
-      return :new
-    else
-      if @lines.any? { | line | OLD_FIRST_LINE_REGEX =~ line }
-        @first_line_regex = OLD_FIRST_LINE_REGEX
-        @start_id_regex = OLD_START_ID_REGEX
-        return :old
-      end
-    end
-    throw Exception.new("no matching lines found")
-  end
-
   def parse
-    puts determine_old_or_new
     while (has_entry) do
       read_entry
     end
@@ -119,17 +151,22 @@ class Converter
 
 end
 
+# ---- main script
 
-files = Dir.glob(dirname+"/*.txt")
+re = /\.txt/
+globpattern = dirname =~ re ? dirname : dirname + "/*.txt"
+# puts globpattern
+files = Dir.glob(globpattern)
+# puts files
 
 files.each do | filename |
-  puts filename
+  # puts filename
   output_filename = filename.gsub(/.txt$/,".csv")
-  puts output_filename
+  # puts output_filename
   f = File.open(filename)
   lines = f.readlines
 
-  converter = Converter.new(lines,year)
+  converter = Converter.new(lines: lines,filename: filename)
   converter.add_header
   converter.parse
   File.open(output_filename,"w") do | outputfile |

@@ -17,9 +17,6 @@ START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.).*(H|S)$/
 OLD_START_ID_REGEX = /^(\d\d\.\d\d\.) .*([+-])/
 dirname = ARGV[0]
 year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
-# puts "hi"
-# puts filename
-
 
 class Converter
 
@@ -37,18 +34,19 @@ class Converter
   end
 
   def has_entry()
-    # puts "current_line: #{current_line}"
-    while (forward && !(@start_id_regex =~ current_line)) do
-  #    puts "current_line: #{current_line}"
+    while (!reached_end && !(@start_id_regex =~ current_line)) do
+      forward
     end
     return !reached_end
   end
 
+
   def read_lines_till_next_header()
-    # puts "current_line: #{current_line}"
+    @abrechnung_re = /Abrechnung/
     result = []
-    while (forward && !(@start_id_regex =~ current_line)) do
-      result << current_line
+    while (forward && (cl = current_line.strip.gsub("_","")) && !cl.empty? && !(@start_id_regex =~ cl) && !(@abrechnung_re =~ cl))  do
+      stripped = cl
+      result << stripped
     end
     result
   end
@@ -76,11 +74,9 @@ class Converter
     RE_MY_CAND = /(\d\d?)\/(\d\d\d\d)/
 
     def extract_year
-      # puts @filename
       candidates = @lines.select {|l| l =~ RE_MY_CAND}
       month_year = @lines.map do | line |
         m = RE_MONTH_YEAR.match(line)
-        # puts line if m
         m ? [m[1],m[2]] : nil
       end.compact
       one_month_year = month_year.uniq
@@ -110,7 +106,6 @@ class Converter
   def extract_before_after
     alt_neu_re = @filetype == :new ? RE_ALT_NEU_N : RE_ALT_NEU_O
     balances = @lines.join.scan(alt_neu_re).uniq
-    # puts balances.inspect
     allowed_matches = 2
     unless balances.size == allowed_matches
       STDERR.puts "#{@filename} (#{@filetype}): couldn't find exactly #{allowed_matches} candidates for alt/neu: #{balances.inspect}"
@@ -119,9 +114,6 @@ class Converter
           set_balance(m)
       end
     end
-    # puts "#{@data}"
-    # puts balances.inspect
-    # puts "#{@filename} (#{@filetype}): #{@data}"
   end
 
   def check_balance
@@ -129,7 +121,11 @@ class Converter
     bookings_sum = bookings.reduce(:+).round(2)
     delta_balances = (@data["neu"] - @data["alt"]).round(2)
     diff = (delta_balances - bookings_sum).round(2)
-    puts "#{@filename} :\nbalances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum}, diff: #{diff}"
+    unless diff == 0
+      STDERR.puts "#{@filename} (#{@filetype}) :\nbalances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum} (#{bookings.size},#{@entries.size}), diff: #{diff}"
+    end
+    # puts bookings.inspect
+    # puts @entries.first.inspect
   end
   def parse_amount(betrag, haben_soll)
     if @filetype == :new
@@ -160,7 +156,13 @@ class Converter
     unless m
       STDERR.puts "could not match #{current_line}"
     else
-      entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3], betrag: m[4], haben_soll: m[5] )
+      if @filetype == :new
+        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3], betrag: m[4], haben_soll: m[5] )
+      #   entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: "", vorgang: m[4], betrag: m[5], haben_soll: m[6] )
+    else
+        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: "", vorgang: m[4], betrag: m[5], haben_soll: m[6] )
+      end
+
       lines = read_lines_till_next_header()
       entry.who = lines.shift
       entry.verwendungszweck = "\"#{lines.join(" ")}\""
@@ -206,15 +208,11 @@ end
 
 re = /\.txt/
 globpattern = dirname =~ re ? dirname : dirname + "/*.txt"
-# puts globpattern
 files = Dir.glob(globpattern)
-# puts files
 
 files.each do | filename |
   begin
-    # puts filename
     output_filename = filename.gsub(/.txt$/,".csv")
-    # puts output_filename
     f = File.open(filename)
     lines = f.readlines
 

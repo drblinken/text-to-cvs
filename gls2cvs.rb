@@ -29,9 +29,11 @@ class Converter
     @result = []
     @filename = filename
     @year = year
+    @data = {}
     @datemap = {"März" => "May","Dez" => "Dec", "Juni" => "June", "Juli" => "July", "Okt" => "Oct"}
     determine_old_or_new
     extract_year
+    extract_before_after
   end
 
   def has_entry()
@@ -91,6 +93,40 @@ class Converter
       end
       one_month_year
     end
+
+
+
+  RE_ALT_NEU_O = /\s(alt|neu)(.*) ([\d,\.]*)(\+|-)/
+  RE_ALT_NEU_N = /(alter|neuer) Kontostand v.*(\n *)? ([\d,\.]*) (H|S)/
+  def set_balance(balance)
+    if @filetype == :new
+      alt_neu = balance[0][0..2]
+      sign = balance[3] == "S" ? "-" : ""
+    else
+      alt_neu = balance[0]
+      sign = balance[3] == "-" ? "-" : ""
+    end
+    amount_s = "#{sign}#{balance[2]}"
+    amount = amount_s.gsub(".","").gsub(",",".").to_f
+    @data[alt_neu] = amount
+  end
+  def extract_before_after
+    alt_neu_re = @filetype == :new ? RE_ALT_NEU_N : RE_ALT_NEU_O
+    balances = @lines.join.scan(alt_neu_re).uniq
+    puts balances.inspect
+    allowed_matches = 2
+    unless balances.size == allowed_matches
+      STDERR.puts "#{@filename} (#{@filetype}): couldn't find exactly #{allowed_matches} candidates for alt/neu: #{balances.inspect}"
+    else
+      balances.each do | m |
+          set_balance(m)
+      end
+    end
+    puts "#{@data}"
+  #  puts balances.inspect
+    # puts "#{@filename} (#{@filetype}): #{@data}"
+  end
+
 
   # was needed for paypal dates
   def translate_month(date)
@@ -160,16 +196,24 @@ files = Dir.glob(globpattern)
 # puts files
 
 files.each do | filename |
-  # puts filename
-  output_filename = filename.gsub(/.txt$/,".csv")
-  # puts output_filename
-  f = File.open(filename)
-  lines = f.readlines
+  begin
+    # puts filename
+    output_filename = filename.gsub(/.txt$/,".csv")
+    # puts output_filename
+    f = File.open(filename)
+    lines = f.readlines
 
-  converter = Converter.new(lines: lines,filename: filename)
-  converter.add_header
-  converter.parse
-  File.open(output_filename,"w") do | outputfile |
-    outputfile.write converter.result
-  end
+    converter = Converter.new(lines: lines,filename: filename)
+    converter.add_header
+    converter.parse
+    File.open(output_filename,"w") do | outputfile |
+      outputfile.write converter.result
+    end
+  rescue Exception => e
+   puts e.message
+   puts e.backtrace.inspect
+   puts "in #{filename}"
+ end
+  #  puts "----------"
+  #  puts "in #{filename}"
 end

@@ -18,6 +18,9 @@ OLD_START_ID_REGEX = /^(\d\d\.\d\d\.) .*([+-])/
 dirname = ARGV[0]
 year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 
+GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :amount, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
+
+
 class Converter
 
   def initialize(lines:, filename:, year: nil)
@@ -42,12 +45,14 @@ class Converter
 
 
   def read_lines_till_next_header()
-    @abrechnung_re = /Abrechnung/
+    @abrechnung_re = /(Abrechnung|Übertrag|neuer Kontostand)/
     result = []
     while (forward && (cl = current_line.strip.gsub("_","")) && !cl.empty? && !(@start_id_regex =~ cl) && !(@abrechnung_re =~ cl))  do
       stripped = cl
+      #puts "add #####{cl}####"
       result << stripped
     end
+    STDERR.puts "----------------\nlong entry in: #{@filename}\n----------------\n#{result.join("\n")}" if result.size > 8
     result
   end
 
@@ -117,7 +122,7 @@ class Converter
   end
 
   def check_balance
-    bookings = @entries.map{|e| parse_amount(e.betrag, e.haben_soll)}
+    bookings = @entries.map{|e| e.amount}
     bookings_sum = bookings.reduce(:+).round(2)
     delta_balances = (@data["neu"] - @data["alt"]).round(2)
     diff = (delta_balances - bookings_sum).round(2)
@@ -146,21 +151,27 @@ class Converter
   end
 
   # https://ruby-doc.org/core-3.1.1/Struct.html
-  GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
+  GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :amount, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
   def add_year(date)
     "#{date}#{@year}"
   end
   def read_entry()
     header = current_line
-    m = @first_line_regex.match(current_line)
-    unless m
+    match = @first_line_regex.match(current_line)
+    unless match
       STDERR.puts "could not match #{current_line}"
     else
+      m = []
+      (0..match.size-1).to_a.each do |i| m << (match[i].nil? ? "" : match[i].strip)  end
       if @filetype == :new
-        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3], betrag: m[4], haben_soll: m[5] )
+        amount = parse_amount(m[4], m[5])
+        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3], betrag: m[4], haben_soll: m[5], amount: amount )
       #   entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: "", vorgang: m[4], betrag: m[5], haben_soll: m[6] )
-    else
-        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: "", vorgang: m[4], betrag: m[5], haben_soll: m[6] )
+      else
+        buchungs_tag = add_year(m[1])
+        wert = m[3] != "" ? add_year(m[3]) : buchungs_tag
+        amount = parse_amount(m[5], m[6])
+        entry = GLS_Entry.new(buchungs_tag: buchungs_tag, wert: wert, vorgang: m[4], betrag: m[5], haben_soll: m[6], amount: amount )
       end
 
       lines = read_lines_till_next_header()
@@ -191,7 +202,7 @@ class Converter
   def result
     result = []
     result << GLS_Entry.new.members.join(DEL)
-    result << @entries.map{|e| e.values.map{|v| v.nil? ? "" : v.strip}.join(DEL)}
+    result << @entries.map{|e| e.values.map{|v| v.nil? ? "" : v}.join(DEL)}
     result.join("\n")
   end
 

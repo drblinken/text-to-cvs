@@ -2,7 +2,7 @@
 # ./gls2cvs.rb test/real_data/test.txt
 
 if ARGV.size < 1
-  puts "usage: ./gls2cvs.rb <filename> [<year>]"
+  puts "usage: ./gls2cvs.rb <dirname> [<year>]"
   puts "year will be appended to payment date if given"
   exit 1
 end
@@ -13,12 +13,11 @@ FIRST_LINE_REGEX = /^(\d\d\.\d\d\.) (\d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
 # try this with simple variations to make sure all entries are matched
 # START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)/
 START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.).*(H|S)$/
-filename = ARGV[0]
+dirname = ARGV[0]
 year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 # puts "hi"
 # puts filename
-f = File.open(filename)
-lines = f.readlines
+
 
 class Converter
 
@@ -91,7 +90,7 @@ class Converter
   end
 
   def result
-    @result
+    @result.join("\n")
   end
 
   def parse
@@ -102,8 +101,20 @@ class Converter
 
 end
 
-converter = Converter.new(lines,year)
-converter.add_header
-converter.parse
 
-puts converter.result
+files = Dir.glob(dirname+"/*.txt")
+
+files.each do | filename |
+  puts filename
+  output_filename = filename.gsub(/.txt$/,".csv")
+  puts output_filename
+  f = File.open(filename)
+  lines = f.readlines
+
+  converter = Converter.new(lines,year)
+  converter.add_header
+  converter.parse
+  File.open(output_filename,"w") do | outputfile |
+    outputfile.write converter.result
+  end
+end

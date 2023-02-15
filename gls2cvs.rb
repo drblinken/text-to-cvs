@@ -2,8 +2,7 @@
 # ./gls2cvs.rb test/real_data/test.txt
 
 if ARGV.size < 1
-  puts "usage: ./gls2cvs.rb <dirname> [<year>]"
-  puts "year will be appended to payment date if given"
+  puts "usage: ./gls2cvs.rb <dirname>"
   exit 1
 end
 DEL = "\t"
@@ -16,24 +15,22 @@ OLD_FIRST_LINE_REGEX = /^(\d\d.\d\d.) +(Wertstellung: (\d\d.\d\d.))?(.*) ([0-9,.
 START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.).*(H|S)$/
 OLD_START_ID_REGEX = /^(\d\d\.\d\d\.) .*([+-])/
 dirname = ARGV[0]
-year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 
-GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :amount, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
+GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :amount, :who, :verwendungszweck, keyword_init: true)
 
 
 class Converter
 
-  def initialize(lines:, filename:, year: nil)
+  def initialize(lines:, filename:, write_header: true)
     @current_line = 0
     @lines = lines # .map(&:strip)
     @entries = []
     @filename = filename
-    @year = year
     @data = {}
-    @datemap = {"März" => "May","Dez" => "Dec", "Juni" => "June", "Juli" => "July", "Okt" => "Oct"}
     determine_old_or_new
     extract_year
     extract_before_after
+    @write_header = write_header
   end
 
   def has_entry()
@@ -151,7 +148,7 @@ class Converter
   end
 
   # https://ruby-doc.org/core-3.1.1/Struct.html
-  GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :amount, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
+  GLS_Entry = Struct.new(:buchungs_tag, :wert, :amount, :vorgang,  :who, :verwendungszweck, keyword_init: true)
   def add_year(date)
     "#{date}#{@year}"
   end
@@ -165,13 +162,15 @@ class Converter
       (0..match.size-1).to_a.each do |i| m << (match[i].nil? ? "" : match[i].strip)  end
       if @filetype == :new
         amount = parse_amount(m[4], m[5])
-        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3], betrag: m[4], haben_soll: m[5], amount: amount )
+        entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: add_year(m[2]), vorgang: m[3],  amount: amount )
+        # betrag: m[4], haben_soll: m[5],
       #   entry = GLS_Entry.new(buchungs_tag: add_year(m[1]), wert: "", vorgang: m[4], betrag: m[5], haben_soll: m[6] )
       else
         buchungs_tag = add_year(m[1])
         wert = m[3] != "" ? add_year(m[3]) : buchungs_tag
         amount = parse_amount(m[5], m[6])
-        entry = GLS_Entry.new(buchungs_tag: buchungs_tag, wert: wert, vorgang: m[4], betrag: m[5], haben_soll: m[6], amount: amount )
+        entry = GLS_Entry.new(buchungs_tag: buchungs_tag, wert: wert, vorgang: m[4], amount: amount )
+        # betrag: m[5], haben_soll: m[6],
       end
 
       lines = read_lines_till_next_header()
@@ -201,9 +200,9 @@ class Converter
 
   def result
     result = []
-    result << GLS_Entry.new.members.join(DEL)
+    result << GLS_Entry.new.members.join(DEL) if @write_header
     result << @entries.map{|e| e.values.map{|v| v.nil? ? "" : v}.join(DEL)}
-    result.join("\n")
+    result.join("\n") + "\n"
   end
 
   def parse
@@ -220,19 +219,19 @@ end
 re = /\.txt/
 globpattern = dirname =~ re ? dirname : dirname + "/*.txt"
 files = Dir.glob(globpattern)
-
+write_header = true
 files.each do | filename |
   begin
     output_filename = filename.gsub(/.txt$/,".csv")
     f = File.open(filename)
     lines = f.readlines
 
-    converter = Converter.new(lines: lines,filename: filename)
-
+    converter = Converter.new(lines: lines,filename: filename, write_header: write_header)
     converter.parse
     File.open(output_filename,"w") do | outputfile |
       outputfile.write converter.result
     end
+    write_header = false
   rescue Exception => e
    puts e.message
    puts e.backtrace.inspect

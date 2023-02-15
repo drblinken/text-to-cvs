@@ -10,9 +10,11 @@ DEL = "\t"
 # DEL = ","
 # FIRST_LINE_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
 FIRST_LINE_REGEX = /^(\d\d\.\d\d\.) (\d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
+OLD_FIRST_LINE_REGEX = /^(\d\d.\d\d.) +(Wertstellung: (\d\d.\d\d.))?(.*) ([0-9,.]+)([+-])/
 # try this with simple variations to make sure all entries are matched
 # START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)/
 START_ID_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.).*(H|S)$/
+OLD_START_ID_REGEX = /^(\d\d\.\d\d\.).*([+-])/
 dirname = ARGV[0]
 year = ARGV.size >= 2 ? " #{ARGV[1]}" : ""
 # puts "hi"
@@ -31,7 +33,7 @@ class Converter
 
   def has_entry()
     # puts "current_line: #{current_line}"
-    while (forward && !(START_ID_REGEX =~ current_line)) do
+    while (forward && !(@start_id_regex =~ current_line)) do
   #    puts "current_line: #{current_line}"
     end
     return !reached_end
@@ -40,7 +42,7 @@ class Converter
   def read_lines_till_next_header()
     # puts "current_line: #{current_line}"
     result = []
-    while (forward && !(START_ID_REGEX =~ current_line)) do
+    while (forward && !(@start_id_regex =~ current_line)) do
       result << current_line
     end
     result
@@ -58,7 +60,7 @@ class Converter
 
   def read_entry()
     header = current_line
-    m = FIRST_LINE_REGEX.match(current_line)
+    m = @first_line_regex.match(current_line)
     unless m
       STDERR.puts "could not match #{current_line}"
     else
@@ -93,7 +95,23 @@ class Converter
     @result.join("\n")
   end
 
+  def determine_old_or_new
+    if @lines.any? { | line | FIRST_LINE_REGEX =~ line }
+      @first_line_regex = FIRST_LINE_REGEX
+      @start_id_regex = START_ID_REGEX
+      return :new
+    else
+      if @lines.any? { | line | OLD_FIRST_LINE_REGEX =~ line }
+        @first_line_regex = OLD_FIRST_LINE_REGEX
+        @start_id_regex = OLD_START_ID_REGEX
+        return :old
+      end
+    end
+    throw Exception.new("no matching lines found")
+  end
+
   def parse
+    puts determine_old_or_new
     while (has_entry) do
       read_entry
     end

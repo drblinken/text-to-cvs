@@ -7,6 +7,7 @@ if ARGV.size < 1
   exit 1
 end
 DEL = "\t"
+# DEL = ","
 # FIRST_LINE_REGEX = /^(\d\d\.\d\d\. \d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
 FIRST_LINE_REGEX = /^(\d\d\.\d\d\.) (\d\d\.\d\d\.)\s(.*)\s([0-9,.]+) (H|S)$/
 # try this with simple variations to make sure all entries are matched
@@ -37,25 +38,38 @@ class Converter
     return !reached_end
   end
 
+  def read_lines_till_next_header()
+    # puts "current_line: #{current_line}"
+    result = []
+    while (forward && !(START_ID_REGEX =~ current_line)) do
+      result << current_line
+    end
+    result
+  end
+
+  # was needed for paypal dates
   def translate_month(date)
     result = date
     @datemap.each{|k,v| result = result.gsub(k,v)}
     result
   end
 
-  GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, keyword_init: true)
+  # https://ruby-doc.org/core-3.1.1/Struct.html
+  GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, :who, :verwendungszweck, keyword_init: true)
 
   def read_entry()
     header = current_line
-    # https://ruby-doc.org/core-3.1.1/Struct.html
-    #GLS_Entry = Struct.new(:buchungs_tag, :wert, :vorgang, :betrag, :haben_soll, keyword_init: true)
     m = FIRST_LINE_REGEX.match(current_line)
     unless m
       STDERR.puts "could not match #{current_line}"
     else
       entry = GLS_Entry.new(buchungs_tag: m[1], wert: m[2], vorgang: m[3], betrag: m[4], haben_soll: m[5] )
+      lines = read_lines_till_next_header()
+      entry.who = lines.shift
+      entry.verwendungszweck = "\"#{lines.join(" ")}\""
       @result << entry.values.join(DEL)
     end
+
 #  @result << "#{user}#{DEL}#{datum}#{@year}#{DEL}#{type}#{DEL}#{vorzeichen}#{amount}#{DEL}#{currency}#{DEL}#{notes}"
   end
 

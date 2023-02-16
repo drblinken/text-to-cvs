@@ -4,6 +4,11 @@ import os
 from pypdf import PdfReader
 import re
 
+if len(sys.argv) < 2:
+    print("usage: %s <dirname>", argv[0])
+    print("extracts all *.pdf in this dir to *.txt in same dir")
+    exit(1)
+
 # takes all pdf in dir and creates a text file for each of them.
 dir_name = sys.argv[1]
 

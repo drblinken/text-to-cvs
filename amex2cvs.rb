@@ -4,15 +4,26 @@ if ARGV.size < 1
   exit 1
 end
 dirname = ARGV[0]
+no_entries = 0
 
-Amex = Struct.new(:date,:value_date,:text,:amount,:cr,keyword_init: true)
-Line = Struct.new(:line, :x,:y, :part, :entry, keyword_init: true)
+Amex = Struct.new(:date,:value_date,:text,:amount,:cr, :lines ,keyword_init: true) do
+  def initialize(*args)
+    super(*args)
+    self.lines = []
+  end
+end
+Line = Struct.new( :line, :x,:y, :part, :slice, :entry, keyword_init: true) do
+  def initialize(*args)
+    super(*args)
+    self.part = []
+  end
+end
 
 class Converter
+  @@no_entries = 0
     def initialize(lines:, filename:, write_header: true)
       @current_line = 0
       @lines = parse_lines(lines)
-      puts @lines.join("\n")
       @log = lines.map(&:clone)
       @entries = []
       @filename = filename
@@ -47,13 +58,12 @@ class Converter
     end
 
     def find_slices
-      @annotated_lines = []
         @parts.each do | part |
           # puts "starting #{part}-----------"
           @lines.each_with_index do |ls, index|
             if (@@regex[part] =~ ls.line)
               @slices[part] << index
-              @log[index].prepend(part.to_s, " - ")
+              ls.part << part
             end
           end
           # puts "@slices[#{part}]: #{@slices[part].inspect}"
@@ -65,13 +75,18 @@ class Converter
     # this needs to be done first to have a place to store the cr markers
     # that need to be removed from the date slice.
     def fill_amounts
-      puts "----fill_amounts----"
+      puts "---- create Entries, fill_amounts----"
 
       @slices[:amount].each_with_index do |slice, slice_no|
         @line_entries[slice_no] = []
         slice.each_with_index do |index_in_line_array, index_in_slice|
-          amount = @lines[index_in_line_array].line.gsub(".","").gsub(",",".").to_f
-          @line_entries[slice_no][index_in_slice] = Amex.new(amount: amount)
+          line = @lines[index_in_line_array]
+          amount = line.line.gsub(".","").gsub(",",".").to_f
+          entry = Amex.new( amount: amount)
+          entry.lines << line
+          line.entry = entry
+          line.slice = slice_no
+          @line_entries[slice_no][index_in_slice] = entry
           #puts @line_entries
         end
       end
@@ -84,25 +99,80 @@ class Converter
     def remove_cr_lines_from_dates
         @slices[:date].each_with_index do |slice, slice_no|
           amount_index = 0
+          cr_indices = []
           slice.each_with_index do |index_in_line_array, index_in_slice|
             puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
             if @lines[index_in_line_array].line =~ @@re_cr
-              @line_entries[slice_no][amount_index].cr = @lines[index_in_line_array].line
-              puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{amount_index}"
+              cr_indices << index_in_slice
+              entry = @line_entries[slice_no][amount_index]
+              line = @lines[index_in_line_array]
+              line.part << :cr
+              line.entry = entry
+              entry.cr = line.line
+              entry.lines << line
+              puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{entry}"
             else
               amount_index += 1
-
             end
           end
-            puts slice.inspect
+          puts "delete:"
+          puts slice.inspect
+          cr_indices.each { | i | slice.delete_at(i) }
+          puts slice.inspect
         end
 
     end
     def fill_dates
+      @slices[:date].each_with_index do |slice, slice_no|
+        slice.each_with_index do |index_in_line_array, index_in_slice|
+          line = @lines[index_in_line_array]
+          #    @@regex = {date: /((\d\d\.\d\d)(\d\d\.\d\d))|(CR)/,
+          m = @@regex[:date].match(line.line)
+          if m
+            entry = @line_entries[slice_no][index_in_slice]
+            line.entry = entry
+            entry.lines << line
+            entry.date = m[2]
+            entry.value_date = m[3]
+            # puts
+            # puts "-------- fill_dates ----------"
+            # puts entry.inspect
+            # puts line.inspect
+            # puts
+          else
+            STDERR.puts("ERROR: found no date in fille_dates: #{line.line}")
+          end
+        end
+      end
+
     end
     def fill_texts
+      @slices[:text].each_with_index do |slice, slice_no|
+        slice.each_with_index do |index_in_line_array, index_in_slice|
+          line = @lines[index_in_line_array]
+          #  text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
+          m = @@regex[:text].match(line.line)
+          if m
+            entry = @line_entries[slice_no][index_in_slice]
+            line.entry = entry
+            entry.lines << line
+            entry.text = m[1]
+            # puts
+            # puts "-------- fill_texts ----------"
+            # puts entry.inspect
+            # puts line.inspect
+            # puts
+          else
+            STDERR.puts("ERROR: found no text in fill_texts: #{line.line}")
+          end
+        end
+      end
     end
-
+    def check_slice_sizes
+      @parts.each do | part |
+        @sizes[part] = @slices[part].map{|sub_a| sub_a.size}
+      end
+    end
     def parse
       puts "----find_slices----"
       find_slices
@@ -110,13 +180,15 @@ class Converter
       remove_cr_lines_from_dates
       fill_dates
       fill_texts
-      puts "---- inspect ----"
-      puts @line_entries.inspect
-      puts @slices
-      puts @sizes
     end
 
     def result
+      puts "---- inspect ----"
+      puts @lines.join("\n")
+      # puts @slices
+      check_slice_sizes
+      puts @sizes
+
       @lines.join("\n")
     end
     #attr_reader :log

@@ -48,7 +48,7 @@ class Extractor:
             print(f"WARNING: larger y:{y}")
         x += self.page*1000
         y += self.page*1000
-        text = f'{x:07.2f}:{y:07.2f}-- {text}'
+        text = f'{x:06.1f}:{y:06.1f}-- {text}'
 
         self.parts.append(text)
 

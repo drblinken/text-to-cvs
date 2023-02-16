@@ -6,13 +6,12 @@ end
 dirname = ARGV[0]
 
 Amex = Struct.new(:date,:value_date,:text,:amount,:cr,keyword_init: true)
-Line = Struct.new(:line, :x,:y, :part, :entry, keyword_init: true)
 
 class Converter
+
     def initialize(lines:, filename:, write_header: true)
       @current_line = 0
-      @lines = parse_lines(lines)
-      puts @lines.join("\n")
+      @lines = lines
       @log = lines.map(&:clone)
       @entries = []
       @filename = filename
@@ -31,27 +30,12 @@ class Converter
       @line_entries = []
 
     end
-
-    #@@prefix_re = /(\d{4}\.\d):(\d{4}\.\d)-- /
-    @@prefix_re = /^(\d{4}\.\d):(\d{4}\.\d)-- (.*)$/
-    def parse_lines(lines)
-      lines.map do | line |
-        m = @@prefix_re.match(line)
-        if m
-          Line.new(line: m[3], x: m[1], y: m[2])
-        else
-          STDERR.puts "ERROR: could not parse_line #{line}"
-          Line.new(line: line)
-        end
-      end
-    end
-
     def find_slices
       @annotated_lines = []
         @parts.each do | part |
           # puts "starting #{part}-----------"
-          @lines.each_with_index do |ls, index|
-            if (@@regex[part] =~ ls.line)
+          @lines.each_with_index do |line, index|
+            if (@@regex[part] =~ line)
               @slices[part] << index
               @log[index].prepend(part.to_s, " - ")
             end
@@ -70,7 +54,7 @@ class Converter
       @slices[:amount].each_with_index do |slice, slice_no|
         @line_entries[slice_no] = []
         slice.each_with_index do |index_in_line_array, index_in_slice|
-          amount = @lines[index_in_line_array].line.gsub(".","").gsub(",",".").to_f
+          amount = @lines[index_in_line_array].gsub(".","").gsub(",",".").to_f
           @line_entries[slice_no][index_in_slice] = Amex.new(amount: amount)
           #puts @line_entries
         end
@@ -86,8 +70,8 @@ class Converter
           amount_index = 0
           slice.each_with_index do |index_in_line_array, index_in_slice|
             puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
-            if @lines[index_in_line_array].line =~ @@re_cr
-              @line_entries[slice_no][amount_index].cr = @lines[index_in_line_array].line
+            if @lines[index_in_line_array] =~ @@re_cr
+              @line_entries[slice_no][amount_index].cr = @lines[index_in_line_array]
               puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{amount_index}"
             else
               amount_index += 1
@@ -117,7 +101,7 @@ class Converter
     end
 
     def result
-      @lines.join("\n")
+      @lines.join("")
     end
     #attr_reader :log
     def finish_log

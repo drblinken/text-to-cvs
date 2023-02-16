@@ -34,7 +34,7 @@ for filename in filenames:
     print(filename)
     txt_filename = extre.sub(".txt", filename)
     print(txt_filename)
-    f = open(txt_filename, "a")
+    f = open(txt_filename, "w")
     for page in reader.pages:
         text = page.extract_text()
         f.write(text)

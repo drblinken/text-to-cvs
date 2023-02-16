@@ -1,5 +1,8 @@
 #textextractor
 
+# be careful to update the version of pypdf,
+# as the scripts rely on the more or less exact text exported-
+# and the pypdf documentation says that the order may change:
 
 ok banken/gls/2020 ++ cat one_text.txt| wc -l
      313

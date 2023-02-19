@@ -5,14 +5,22 @@ if ARGV.size < 1
 end
 dirname = ARGV[0]
 no_entries = 0
+DEL = "\t"
 
 Amex = Struct.new(:id, :date, :value_date, :text, :amount, :cr, :lines, keyword_init: true) do
   def initialize(*args)
     super(*args)
     self.lines = []
   end
+
+  def self.cvs_header
+    members
+  end
+  def cvs_values
+    [id, date, value_date, "\"#{text}\"", amount, cr, "\"#{lines.map(&:line_no)}\""  ]
+  end
 end
-Line = Struct.new(:line, :x, :y, :part, :slice, :entry, keyword_init: true) do
+Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :entry, keyword_init: true) do
   def initialize(*args)
     super(*args)
     self.part = []
@@ -65,10 +73,10 @@ class Converter
   @@prefix_re = /^(\d{4}\.\d):(\d{4}\.\d)-- (.*)$/
 
   def parse_lines(lines)
-    lines.map do |line|
+      lines.each_with_index.map do |line, line_no|
       m = @@prefix_re.match(line)
       if m
-        Line.new(line: m[3], x: m[1], y: m[2])
+        Line.new(line_no: line_no, line: m[3], x: m[1], y: m[2])
       else
         STDERR.puts "ERROR: could not parse_line #{line}"
         Line.new(line: line)
@@ -208,10 +216,12 @@ class Converter
     end
 
     def result
-      # puts '---- inspect ----'
-      # puts @lines.join("\n")
-      # puts @slices
-      @lines.join("\n")
+      result = []
+      result << timestamp
+      result << Amex.cvs_header.join(DEL) if @write_header
+      result << @line_entries.flatten.map{|e| e.cvs_values.join(DEL)}
+      puts result
+      result.join("\n") + "\n"
     end
 
     # attr_reader :log

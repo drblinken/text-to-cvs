@@ -3,17 +3,24 @@ module AmexRegexp
 
   # regexes to identify the main information parts
   # Saldodeslaufenden Monats
-  text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
+  # text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
+  text_re = '[A-Z][(0-9 A-Za-z*.\/\+-]{2,}'
   at_start_or_end = "(^#{text_re}|#{text_re}$)"
   AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)/,
-            amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats))/,
+            amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen))/,
             text: Regexp.new(at_start_or_end)
   }
 
 
 
   def re_match(which,str)
-    AMREGEX[which].match(str)
+    match = AMREGEX[which].match(str)
+    return nil unless match
+    if :text == which
+      is_text(str) ? match : nil
+    else
+      match
+    end
   end
   def is_amount_noise(str, logger = nil)
     m = AMREGEX[:amount].match(str)
@@ -45,4 +52,21 @@ module AmexRegexp
     end
   end
 
+  PAYMENT_REGEX = /ZAHLUNG ERHALTEN. BESTEN DANK./
+  def is_payment(str)
+    PAYMENT_REGEX =~ str
+  end
+
+
+
+
+  def has_more_capital_letters(str)
+    upper =   str.scan(/[A-Z]/).size
+    lower = str.scan(/[a-z]/).size
+    upper > lower
+  end
+
+  def is_text(str)
+    has_more_capital_letters(str)
+  end
 end

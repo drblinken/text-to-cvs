@@ -5,7 +5,7 @@ if ARGV.size < 1
 end
 dirname = ARGV[0]
 
-Amex = Struct.new(:date,:value_date,:text,:amount,:cr,keyword_init: true)
+AmexEntry = Struct.new(:date, :value_date, :text, :amount, :cr, keyword_init: true)
 
 class Converter
 
@@ -55,7 +55,7 @@ class Converter
         @line_entries[slice_no] = []
         slice.each_with_index do |index_in_line_array, index_in_slice|
           amount = @lines[index_in_line_array].gsub(".","").gsub(",",".").to_f
-          @line_entries[slice_no][index_in_slice] = Amex.new(amount: amount)
+          @line_entries[slice_no][index_in_slice] = AmexEntry.new(amount: amount)
           #puts @line_entries
         end
       end

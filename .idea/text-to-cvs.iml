@@ -11,6 +11,5 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" scope="PROVIDED" name="rbs (v2.1.0, RVM: ruby-3.1.2 [3.1.2mh]) [gem]" level="application" />
   </component>
 </module>

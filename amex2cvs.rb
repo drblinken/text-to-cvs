@@ -17,7 +17,7 @@ Amex = Struct.new(:id, :date, :value_date, :text, :amount, :cr, :lines, keyword_
     members
   end
   def cvs_values
-    [id, date, value_date, "\"#{text}\"", amount, cr, "\"#{lines.map(&:line_no)}\""  ]
+    [id, date, value_date, "\"#{text}\"", amount.to_s.gsub(".",","), cr, "\"#{lines.map(&:line_no)}\""  ]
   end
 end
 Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :entry, keyword_init: true) do
@@ -47,10 +47,11 @@ class Converter
 
     # regexes to identify the main information parts
     @@regex = { date: /((\d\d\.\d\d)(\d\d\.\d\d))|(CR)/,
-                amount: /([\.\d]+,\d\d)/,
+                amount: /^([\.\d]+,\d\d)/,
                 text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
     }
     @@re_cr = /CR/
+    @@re_saldo = /Saldo.*laufenden.* ([\.\d]+,\d\d)/
     @parts = @@regex.keys
     @line_entries = []
 
@@ -66,6 +67,7 @@ class Converter
     remove_cr_lines_from_dates
     fill_dates
     fill_texts
+    @entries = @line_entries.flatten
     run_checks
   end
 
@@ -109,7 +111,8 @@ class Converter
         @line_entries[slice_no] = []
         slice.each_with_index do |index_in_line_array, index_in_slice|
           line = @lines[index_in_line_array]
-          amount = line.line.gsub('.', '').gsub(',', '.').to_f
+          amount_part = @@regex[:amount].match(line.line)[1]
+          amount = parse_amount(amount_part)
           entry_no += 1
           entry = Amex.new(id: entry_no, amount: amount)
           entry.lines << line
@@ -119,6 +122,9 @@ class Converter
           # puts @line_entries
         end
       end
+    end
+    def parse_amount(amount)
+      amount.gsub('.', '').gsub(',', '.').to_f
     end
 
     # to find contiguous date slices, the CR markers had to be included,
@@ -133,12 +139,13 @@ class Converter
           # puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
           if @lines[index_in_line_array].line =~ @@re_cr
             cr_indices << index_in_slice
-            entry = @line_entries[slice_no][amount_index]
+            entry = @line_entries[slice_no][amount_index-1] # belongs to the entry in the line above
             line = @lines[index_in_line_array]
             line.part << :cr
             line.entry = entry
             line.slice = slice_no
             entry.cr = line.line
+            entry.amount = entry.amount * -1
             entry.lines << line
             # puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{entry}"
           else
@@ -209,18 +216,45 @@ class Converter
         STDERR.puts "slice lengths are unequal: #{sizes}"
       end
     end
+    def find_saldo
+      candidates = @lines.map do |l|
+        m = @@re_saldo.match(l.line)
+        m ? parse_amount(m[1]) : nil
+      end.compact
+      unless candidates.size == 1
+        STDERR.puts "candidates for saldo: #{candidates.inspect}"
+      end
+      candidates[0]
+    end
+    def check_balance
+      saldo = find_saldo
+
+      bookings = @entries.map{|e| e.amount}
+      erstattungen = @entries.select{|e| e.cr == "CR"}.map{|e| e.amount} #.reduce(:+).round(2)
+      # puts "erstattungen: #{erstattungen}"
+      bookings_sum = bookings.reduce(:+).round(2)
+      # delta_balances = (@data["neu"] - @data["alt"]).round(2)
+      delta_balances = saldo
+      diff = (delta_balances - bookings_sum).round(2)
+      unless diff.abs < 0.02
+        STDERR.puts "#{@filename} (#{@filetype}) :\nbalances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum} (#{bookings.size},#{@entries.size}), diff: #{diff}"
+      end
+      # puts bookings.inspect
+      # puts @entries.first.inspect
+    end
+
 
     def run_checks
       puts "..."
       check_slice_sizes
+      check_balance
     end
 
     def result
       result = []
-      result << timestamp
+      # result << timestamp
       result << Amex.cvs_header.join(DEL) if @write_header
       result << @line_entries.flatten.map{|e| e.cvs_values.join(DEL)}
-      puts result
       result.join("\n") + "\n"
     end
 

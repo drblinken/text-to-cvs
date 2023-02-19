@@ -30,6 +30,7 @@ class Converter
 
     @@re_cr = /CR/
     @@re_saldo = /Saldo.*laufenden.* ([\.\d]+,\d\d)/
+    @@re_other_saldo = /Saldo.*sonstige.*Transaktionen ([\.\d]+,\d\d)/
     @parts = Converter::AMREGEX.keys
     @line_entries = []
 
@@ -245,9 +246,33 @@ class Converter
       end
       candidates[0]
     end
+
+  def find_other_saldo
+    candidates = @lines.map do |l|
+      m = @@re_other_saldo.match(l.line)
+      m ? parse_amount(m[1]) : nil
+    end.compact
+    return 0 if candidates.size == 0
+    return candidates[0] if candidates.size == 1
+    STDERR.puts "more than one candidate for other saldo: #{candidates.inspect}"
+    0
+  end
+
+  def find_summary
+    candidates = @lines.map do |l|
+      gutschriften, belastungen = summary(l.line)
+      gutschriften ? [parse_amount(gutschriften),parse_amount(belastungen)] : nil
+    end.compact
+    unless candidates.size == 1
+      STDERR.puts "candidates for summary: #{candidates.inspect}"
+    end
+    candidates[0]
+  end
     def check_balance
       saldo = find_saldo
-
+      other_saldo = find_other_saldo
+      saldo += other_saldo
+      gutschriften, belastungen  = find_summary
       bookings = @entries.map{|e| e.amount}
       erstattungen = @entries.select{|e| e.cr == "CR"}.map{|e| e.amount} #.reduce(:+).round(2)
       # puts "erstattungen: #{erstattungen}"
@@ -256,7 +281,7 @@ class Converter
       delta_balances = saldo
       diff = (delta_balances - bookings_sum).round(2)
       unless diff.abs < 0.02
-        msg = " #{@filename} (#{@filetype}) :\nbalances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum} (#{bookings.size},#{@entries.size}), diff: #{diff}"
+        msg = " #{@filename} (#{@filetype}) :\n gutschriften #{gutschriften}, belastungen #{belastungen}, balances: #{@data}, delta_balances: #{delta_balances}, bookings_sum: #{bookings_sum} (#{bookings.size},#{@entries.size}), diff: #{diff}"
         STDERR.puts msg
         logger.error(msg)
       end
@@ -291,6 +316,12 @@ class Converter
   def log
     @lines.map(&:to_log).join("\n")
   end
+
+  def log_sorted
+    relevant = @lines.select{|l| !l.entry.nil?}
+    sorted = relevant.sort_by{ |line| line.y }
+    sorted.map(&:to_log).join("\n")
+  end
   def timestamp
     require 'date'
     DateTime.now.strftime("Printed on %d.%m.%Y at %H:%M:%S")
@@ -318,6 +349,7 @@ files.each do |filename|
   begin
     output_filename = filename.gsub(/.txt$/, '.csv')
     log_filename = filename.gsub(/.txt$/, '.log')
+    log_sorted_filename =  filename.gsub(/.txt$/, '-sorted.log')
 
     lines = File.open(filename) { |f| f.readlines }
      converter = Converter.new(lines: lines, filename: filename, log_filename: log_filename, logger: logger, write_header: write_header)
@@ -327,6 +359,11 @@ files.each do |filename|
     File.open(log_filename, 'w') do |outputfile|
       outputfile.write converter.timestamp
       outputfile.write converter.log
+    end
+    File.open(log_sorted_filename, 'w') do |outputfile|
+      outputfile.write converter.timestamp
+      outputfile.write "\n"
+      outputfile.write converter.log_sorted
     end
     File.open(output_filename, 'w') do |outputfile|
       outputfile.write converter.result

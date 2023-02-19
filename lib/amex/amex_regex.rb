@@ -57,7 +57,14 @@ module AmexRegexp
     PAYMENT_REGEX =~ str
   end
 
-
+  SUMMARY_REGEX = /([\.\d]+,\d\d) ?\- ?([\.\d]+,\d\d) ?\+ ?([\.\d]+,\d\d) ?= ?([\.\d]+,\d\d)/
+  def summary(str)
+    m = SUMMARY_REGEX.match(str)
+    return nil unless m
+    # saldo letzter monat, gutschriften, belastungen, neuer salso
+    # gutschriften, belastungen
+    [m[2],m[3]]
+  end
 
 
   def has_more_capital_letters(str)

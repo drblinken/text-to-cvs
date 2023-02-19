@@ -20,35 +20,40 @@ Amex = Struct.new(:id, :date, :value_date, :text, :amount, :cr, :lines, keyword_
     [id, date, value_date, "\"#{text}\"", amount.to_s.gsub(".",","), cr, "\"#{lines.map(&:line_no)}\""  ]
   end
 end
-Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :entry, keyword_init: true) do
+Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :slice_i, :entry, keyword_init: true) do
   def initialize(*args)
     super(*args)
     self.part = []
   end
   def to_log
     entry_id = entry ? entry.id : "+"
-    "#{x}:#{y}-#{part}/#{slice}/#{entry_id}-- #{line}"
+    "#{x}:#{y}-#{part}/#{slice}/#{slice_i}/#{entry_id}-- #{line}"
   end
 end
 
 class Converter
   @@no_entries = 0
 
-  def initialize(lines:, filename:, write_header: true)
+  def initialize(lines:, filename:, log_filename:,  write_header: true)
     @current_line = 0
     @lines = parse_lines(lines)
     @log = lines.map(&:clone)
     @entries = []
     @filename = filename #  just for context in error/debug output
+    @log_filename = log_filename
     @data = {} # ?
     @write_header = write_header # writes header once for all files
     @slices = Hash.new { |hash, key| hash[key] = [] }
     @slice_lines = Hash.new { |hash, key| hash[key] = [] } # ?
 
     # regexes to identify the main information parts
-    @@regex = { date: /((\d\d\.\d\d)(\d\d\.\d\d))|(CR)/,
-                amount: /^([\.\d]+,\d\d)/,
-                text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
+    # Saldodeslaufenden Monats
+    text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
+    at_start_or_end = "(#{text_re}|#{text_re}$)"
+    @@regex = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)/,
+                amount: /^(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats))/,
+                text: Regexp.new(at_start_or_end)
+                # /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
     }
     @@re_cr = /CR/
     @@re_saldo = /Saldo.*laufenden.* ([\.\d]+,\d\d)/
@@ -80,7 +85,7 @@ class Converter
       if m
         Line.new(line_no: line_no, line: m[3], x: m[1], y: m[2])
       else
-        STDERR.puts "ERROR: could not parse_line #{line}"
+        STDERR.puts "ERROR: in #{@filename} could not parse_line #{line}"
         Line.new(line: line)
       end
     end
@@ -102,24 +107,36 @@ class Converter
       @slices[part].reject! { |a| a.size < 4 } # this might skip short last page!!!
     end
 
+    def remove_amount_noise!(slice)
+      slice.reject! do |line_no|
+        line = @lines[line_no].line
+        m = @@regex[:amount].match(line)
+        !m[3].nil?
+      end
+    end
+
     # this needs to be done first to have a place to store the cr markers
     # that need to be removed from the date slice.
     def fill_amounts
       # puts '---- create Entries, fill_amounts----'
       entry_no = 0
       @slices[:amount].each_with_index do |slice, slice_no|
+        remove_amount_noise!(slice)
         @line_entries[slice_no] = []
         slice.each_with_index do |index_in_line_array, index_in_slice|
           line = @lines[index_in_line_array]
-          amount_part = @@regex[:amount].match(line.line)[1]
-          amount = parse_amount(amount_part)
-          entry_no += 1
-          entry = Amex.new(id: entry_no, amount: amount)
-          entry.lines << line
-          line.entry = entry
-          line.slice = slice_no
-          @line_entries[slice_no][index_in_slice] = entry
-          # puts @line_entries
+          m = @@regex[:amount].match(line.line)
+          amount_part = m[2]
+            amount = parse_amount(amount_part)
+            entry_no += 1
+            entry = Amex.new(id: entry_no, amount: amount)
+            entry.lines << line
+            line.entry = entry
+            line.slice = slice_no
+            line.slice_i = index_in_slice
+            @line_entries[slice_no][index_in_slice] = entry
+            # puts @line_entries
+
         end
       end
     end
@@ -144,6 +161,7 @@ class Converter
             line.part << :cr
             line.entry = entry
             line.slice = slice_no
+            line.slice_i = index_in_slice
             entry.cr = line.line
             entry.amount = entry.amount * -1
             entry.lines << line
@@ -169,6 +187,11 @@ class Converter
             entry = @line_entries[slice_no][index_in_slice]
             line.entry = entry
             line.slice = slice_no
+            line.slice_i = index_in_slice
+            unless entry
+              write_log
+              puts @line_entries
+            end
             entry.lines << line
             entry.date = m[2]
             entry.value_date = m[3]
@@ -189,11 +212,13 @@ class Converter
         slice.each_with_index do |index_in_line_array, index_in_slice|
           line = @lines[index_in_line_array]
           #  text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
+          write_log
           m = @@regex[:text].match(line.line)
           if m
             entry = @line_entries[slice_no][index_in_slice]
             line.entry = entry
             line.slice = slice_no
+            line.slice_i = index_in_slice
             entry.lines << line
             entry.text = m[1]
             # puts
@@ -261,6 +286,12 @@ class Converter
     # attr_reader :log
 
   end
+  def write_log
+    File.open(@log_filename, 'w') do |outputfile|
+      outputfile.write timestamp
+      outputfile.write log
+    end
+  end
   def log
     @lines.map(&:to_log).join("\n")
   end
@@ -280,15 +311,17 @@ end
 re = /\.txt/
 globpattern = dirname =~ re ? dirname : dirname + '/*.txt'
 files = Dir.glob(globpattern)
+puts "files: #{files}"
 write_header = true
 files.each do |filename|
+  puts "------ start file #{filename}"
   begin
     output_filename = filename.gsub(/.txt$/, '.csv')
     log_filename = filename.gsub(/.txt$/, '.log')
 
     lines = File.open(filename) { |f| f.readlines }
 
-    converter = Converter.new(lines: lines, filename: filename, write_header: write_header)
+    converter = Converter.new(lines: lines, filename: filename, log_filename: log_filename, write_header: write_header)
     converter.parse
     puts "writing log to #{log_filename}"
     File.open(log_filename, 'w') do |outputfile|

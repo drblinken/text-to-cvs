@@ -1,4 +1,7 @@
 #!/Users/kleinen/.rvm/rubies/ruby-3.1.3/bin/ruby
+require './lib/amex/amex_regex.rb'
+require './lib/amex/line.rb'
+require 'logger'
 if ARGV.size < 1
   puts 'usage: ./gls2cvs.rb <dirname>'
   exit 1
@@ -20,21 +23,13 @@ Amex = Struct.new(:id, :date, :value_date, :text, :amount, :cr, :lines, keyword_
     [id, date, value_date, "\"#{text}\"", amount.to_s.gsub(".",","), cr, "\"#{lines.map(&:line_no)}\""  ]
   end
 end
-Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :slice_i, :entry, keyword_init: true) do
-  def initialize(*args)
-    super(*args)
-    self.part = []
-  end
-  def to_log
-    entry_id = entry ? entry.id : "+"
-    "#{x}:#{y}-#{part}/#{slice}/#{slice_i}/#{entry_id}-- #{line}"
-  end
-end
 
 class Converter
+  include AmexRegexp
   @@no_entries = 0
-
-  def initialize(lines:, filename:, log_filename:,  write_header: true)
+  attr_reader :logger
+  def initialize(lines:, filename:, log_filename:,  logger:, write_header: true)
+    @logger = logger
     @current_line = 0
     @lines = parse_lines(lines)
     @log = lines.map(&:clone)
@@ -46,18 +41,9 @@ class Converter
     @slices = Hash.new { |hash, key| hash[key] = [] }
     @slice_lines = Hash.new { |hash, key| hash[key] = [] } # ?
 
-    # regexes to identify the main information parts
-    # Saldodeslaufenden Monats
-    text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
-    at_start_or_end = "(#{text_re}|#{text_re}$)"
-    @@regex = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)/,
-                amount: /^(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats))/,
-                text: Regexp.new(at_start_or_end)
-                # /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
-    }
     @@re_cr = /CR/
     @@re_saldo = /Saldo.*laufenden.* ([\.\d]+,\d\d)/
-    @parts = @@regex.keys
+    @parts = Converter::AMREGEX.keys
     @line_entries = []
 
   end
@@ -76,42 +62,49 @@ class Converter
     run_checks
   end
 
-  #@@prefix_re = /(\d{4}\.\d):(\d{4}\.\d)-- /
-  @@prefix_re = /^(\d{4}\.\d):(\d{4}\.\d)-- (.*)$/
-
   def parse_lines(lines)
       lines.each_with_index.map do |line, line_no|
-      m = @@prefix_re.match(line)
-      if m
-        Line.new(line_no: line_no, line: m[3], x: m[1], y: m[2])
-      else
-        STDERR.puts "ERROR: in #{@filename} could not parse_line #{line}"
-        Line.new(line: line)
+        line_struct = parse_prefix(line)
+         if line_struct
+            line_struct.line_no = line_no
+            line_struct
+         else
+           STDERR.puts "ERROR: in #{@filename} could not parse_line #{line}"
+           Line.new(line_no: line_no, line: line)
+         end
       end
     end
-  end
 
+  def collect_sizes
+    @parts.to_h { |part| [part, @slices[part].map { |sub_a| sub_a.size }] }
+  end
   def find_slices
+    logger.debug("----- find_slices ------")
     @parts.each do |part|
       # puts "starting #{part}-----------"
       @lines.each_with_index do |line_struct, index|
-        if @@regex[part] =~ line_struct.line
+        if re_match(part,line_struct.line)
           @slices[part] << index
           line_struct.part << part
+          logger.add(Logger::DEBUG,"#{part} found in line  #{index} --#{line_struct.line}")
         end
       end
-      # puts "@slices[#{part}]: #{@slices[part].inspect}"
-      # group consecutive lines
+      logger.debug("-----part: #{part}------")
+      logger.debug("lines found: #{@slices[part]}")
       @slices[part] = @slices[part].slice_when { |prev, cur| cur != prev + 1 }.to_a
+      logger.debug("#{@slices[part].size} slices: #{@slices[part]}")
       # discard
       @slices[part].reject! { |a| a.size < 4 } # this might skip short last page!!!
+      logger.debug("#{@slices[part].size} slices after discarding short ones: #{@slices[part]}")
     end
+    # puts "@slices[#{part}]: #{@slices[part].inspect}"
+    # group consecutive lines
+    logger.debug("slices after initial collection: #{collect_sizes}")
+  end
 
     def remove_amount_noise!(slice)
       slice.reject! do |line_no|
-        line = @lines[line_no].line
-        m = @@regex[:amount].match(line)
-        !m[3].nil?
+        is_amount_noise(@lines[line_no].line, logger)
       end
     end
 
@@ -122,28 +115,35 @@ class Converter
       entry_no = 0
       @slices[:amount].each_with_index do |slice, slice_no|
         remove_amount_noise!(slice)
+        logger.debug("slice without noise: #{slice}")
         @line_entries[slice_no] = []
         slice.each_with_index do |index_in_line_array, index_in_slice|
           line = @lines[index_in_line_array]
-          m = @@regex[:amount].match(line.line)
-          amount_part = m[2]
-            amount = parse_amount(amount_part)
-            entry_no += 1
-            entry = Amex.new(id: entry_no, amount: amount)
-            entry.lines << line
-            line.entry = entry
-            line.slice = slice_no
-            line.slice_i = index_in_slice
-            @line_entries[slice_no][index_in_slice] = entry
-            # puts @line_entries
+
+          amount = re_extract_amount(line.line)
+          entry_no += 1
+          entry = Amex.new(id: entry_no, amount: amount)
+          entry.lines << line
+          line.entry = entry
+          line.slice = slice_no
+          line.slice_i = index_in_slice
+          @line_entries[slice_no][index_in_slice] = entry
+          # puts @line_entries
 
         end
       end
+      logger.debug("-----created line_entries: #{@line_entries}, sizes: #{@line_entries.map(&:size)}")
     end
-    def parse_amount(amount)
-      amount.gsub('.', '').gsub(',', '.').to_f
-    end
+    def retrieve_entry(slice_no,slice_i)
+      entry = @line_entries[slice_no][slice_i]
+      unless entry
+        write_log
+        puts @line_entries
+        check_slice_sizes
+      end
+      entry
 
+    end
     # to find contiguous date slices, the CR markers had to be included,
     # as they appear among the date lines in the text export.
     # as they belong to the previous line/entry, they need to be removed and
@@ -156,7 +156,7 @@ class Converter
           # puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
           if @lines[index_in_line_array].line =~ @@re_cr
             cr_indices << index_in_slice
-            entry = @line_entries[slice_no][amount_index-1] # belongs to the entry in the line above
+            entry = retrieve_entry(slice_no,amount_index-1)
             line = @lines[index_in_line_array]
             line.part << :cr
             line.entry = entry
@@ -181,17 +181,13 @@ class Converter
       @slices[:date].each_with_index do |slice, slice_no|
         slice.each_with_index do |index_in_line_array, index_in_slice|
           line = @lines[index_in_line_array]
-          #    @@regex = {date: /((\d\d\.\d\d)(\d\d\.\d\d))|(CR)/,
-          m = @@regex[:date].match(line.line)
+          m = re_match(:date,line.line)
           if m
-            entry = @line_entries[slice_no][index_in_slice]
+            entry = retrieve_entry(slice_no, index_in_slice)
             line.entry = entry
             line.slice = slice_no
             line.slice_i = index_in_slice
-            unless entry
-              write_log
-              puts @line_entries
-            end
+
             entry.lines << line
             entry.date = m[2]
             entry.value_date = m[3]
@@ -212,10 +208,9 @@ class Converter
         slice.each_with_index do |index_in_line_array, index_in_slice|
           line = @lines[index_in_line_array]
           #  text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
-          write_log
-          m = @@regex[:text].match(line.line)
+          m = re_match(:text,line.line)
           if m
-            entry = @line_entries[slice_no][index_in_slice]
+            entry = retrieve_entry(slice_no, index_in_slice)
             line.entry = entry
             line.slice = slice_no
             line.slice_i = index_in_slice
@@ -234,8 +229,7 @@ class Converter
     end
 
     def check_slice_sizes
-      sizes = @parts.to_h { |part| [part, @slices[part].map { |sub_a| sub_a.size }] }
-      slice_part_sizes = [] # Hash.new{ |hash, key| hash[key] = {} }
+      sizes = collect_sizes
       # {:date=>[14, 21, 36], :amount=>[14, 21, 36], :text=>[14, 21, 36]}
       unless sizes.values.uniq.size == 1
         STDERR.puts "slice lengths are unequal: #{sizes}"
@@ -285,7 +279,7 @@ class Converter
 
     # attr_reader :log
 
-  end
+
   def write_log
     File.open(@log_filename, 'w') do |outputfile|
       outputfile.write timestamp
@@ -318,12 +312,14 @@ files.each do |filename|
   begin
     output_filename = filename.gsub(/.txt$/, '.csv')
     log_filename = filename.gsub(/.txt$/, '.log')
-
+    logger_filename =  filename.gsub(/.txt$/, '-debug.log')
     lines = File.open(filename) { |f| f.readlines }
-
-    converter = Converter.new(lines: lines, filename: filename, log_filename: log_filename, write_header: write_header)
+    logger = Logger.new(logger_filename, level: "info")
+    logger.info("----- start parsing #{filename}")
+    converter = Converter.new(lines: lines, filename: filename, log_filename: log_filename, logger: logger, write_header: write_header)
     converter.parse
     puts "writing log to #{log_filename}"
+
     File.open(log_filename, 'w') do |outputfile|
       outputfile.write converter.timestamp
       outputfile.write converter.log

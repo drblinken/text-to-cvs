@@ -140,6 +140,10 @@ class Converter
         write_log
         puts @line_entries
         check_slice_sizes
+        logger.error("retrieve_entry: could not find entry #{slice_no}/#{slice_i}")
+        logger.error("called from #{caller()[0]}")
+        logger.error(collect_sizes)
+        # logger.error(@line_entries)
       end
       entry
 
@@ -155,13 +159,13 @@ class Converter
         slice.each_with_index do |index_in_line_array, index_in_slice|
           # puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
           if @lines[index_in_line_array].line =~ @@re_cr
-            cr_indices << index_in_slice
+            cr_indices << index_in_line_array
             entry = retrieve_entry(slice_no,amount_index-1)
             line = @lines[index_in_line_array]
             line.part << :cr
             line.entry = entry
             line.slice = slice_no
-            line.slice_i = index_in_slice
+            line.slice_i = entry.lines[0].slice_i
             entry.cr = line.line
             entry.amount = entry.amount * -1
             entry.lines << line
@@ -170,10 +174,8 @@ class Converter
             amount_index += 1
           end
         end
-        # puts 'delete:'
-        # puts slice.inspect
-        cr_indices.each { |i| slice.delete_at(i) }
-        # puts slice.inspect
+        slice.reject!{ |i|  @lines[i].line =~ @@re_cr}
+        logger.debug("#{cr_indices.size} cr indices: #{cr_indices}")
       end
     end
 

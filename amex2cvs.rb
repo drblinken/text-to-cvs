@@ -26,13 +26,14 @@ class Converter
       @lines = parse_lines(lines)
       @log = lines.map(&:clone)
       @entries = []
-      @filename = filename
-      @data = {}
-      @write_header = write_header
-      @sizes = Hash.new()
+      @filename = filename    #  just for context in error/debug output
+      @data = {}  # ?
+      @write_header = write_header    # writes header once for all files
+      @sizes = Hash.new() # ?
       @slices =  Hash.new{ |hash, key| hash[key] = [] }
-      @slice_lines = Hash.new{ |hash, key| hash[key] = [] }
+      @slice_lines = Hash.new{ |hash, key| hash[key] = [] }  # ?
 
+      # regexes to identify the main information parts
       @@regex = {date: /((\d\d\.\d\d)(\d\d\.\d\d))|(CR)/,
       amount: /([\.\d]+,\d\d)/,
       text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
@@ -41,6 +42,15 @@ class Converter
       @parts = @@regex.keys
       @line_entries = []
 
+    end
+
+    def parse
+      puts "----find_slices----"
+      find_slices
+      fill_amounts
+      remove_cr_lines_from_dates
+      fill_dates
+      fill_texts
     end
 
     #@@prefix_re = /(\d{4}\.\d):(\d{4}\.\d)-- /
@@ -60,15 +70,17 @@ class Converter
     def find_slices
         @parts.each do | part |
           # puts "starting #{part}-----------"
-          @lines.each_with_index do |ls, index|
-            if (@@regex[part] =~ ls.line)
+          @lines.each_with_index do |line_struct, index|
+            if (@@regex[part] =~ line_struct.line)
               @slices[part] << index
-              ls.part << part
+              line_struct.part << part
             end
           end
           # puts "@slices[#{part}]: #{@slices[part].inspect}"
+          # group consecutive lines
           @slices[part] = @slices[part].slice_when{|prev,cur| cur != prev + 1}.to_a
-          @slices[part].reject!{|a| a.size < 4}
+          # discard
+          @slices[part].reject!{|a| a.size < 4} # this might skip short last page!!!
           @sizes[part] = @slices[part].map{|sub_a| sub_a.size}
         end
     end
@@ -173,14 +185,8 @@ class Converter
         @sizes[part] = @slices[part].map{|sub_a| sub_a.size}
       end
     end
-    def parse
-      puts "----find_slices----"
-      find_slices
-      fill_amounts
-      remove_cr_lines_from_dates
-      fill_dates
-      fill_texts
-    end
+
+
 
     def result
       puts "---- inspect ----"

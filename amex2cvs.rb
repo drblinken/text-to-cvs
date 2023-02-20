@@ -43,6 +43,7 @@ class Converter
     to_s
   end
 
+  # no longer needed?
   def remove_payments
     @entries.each do |entry|
       if is_payment(entry.text)
@@ -222,7 +223,7 @@ class Converter
           line.entry = entry
           line.slice = slice_no
           line.slice_i = entry.lines[0].slice_i
-          entry.cr = line.line
+          entry.cr = date_extract_cr(line.line)
           entry.amount = entry.amount * -1
           entry.lines << line
           # puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{entry}"
@@ -344,21 +345,31 @@ class Converter
     saldo_diff, saldo_diff_msg = eval_and_msg(expr, binding)
     saldo_diff = saldo_diff.round(2)
     # saldo_diff = (saldo_statement - saldo_computed).round(2)
-    unless saldo_diff.abs < 0.02
-      # msg = "saldo in #{@filename}: #{saldo_diff}-saldo_diff = (#{saldo_statement}-saldo_statement - #{saldo_computed}-saldo_computed).round(2)\n" + "#{saldo_statement}(saldo_statement) = #{saldo}(saldo) + #{other_saldo}(other_saldo)"
-      msg = "saldo in #{@filename}: #{saldo_diff_msg}\n#{saldo_statement_msg}"
+    msg = "saldo in #{@filename}: \n#{saldo_diff_msg}\n#{saldo_statement_msg}"
+    if saldo_diff.abs < 0.02
+      logger.info(msg)
+    else
       STDERR.puts msg
       logger.error(msg)
     end
 
     # this doesn't make sense, but serves as a smoke test:
     gutschriften, belastungen = find_summary
-    abs_sum = money_sum(@entries.map { |e| e.amount.abs })
-    abs_summary = gutschriften.abs + belastungen.abs
+    gutschriften = gutschriften.abs
+    belastungen = belastungen.abs
+    expr = "abs_sum_statement = gutschriften + belastungen"
+    abs_sum_statement, abs_sum_statement_msg = eval_and_msg(expr,binding)
+    # is_payment(e.text) ? 0 :
+    puts @entries.map { |e| e.amount.abs }.inspect
+    abs_sum_computed = money_sum(@entries.map { |e| e.amount.abs })
+    abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
+    expr = "abs_diff = abs_sum_computed - abs_sum_statement"
+    abs_diff , abs_diff_msg = eval_and_msg(expr,binding)
 
-    abs_diff = (abs_sum - abs_summary).round(2)
-    unless abs_diff < 0.02
-      msg = "abs_diff in #{@filename}: abs_diff = abs_sum - abs_summary #{abs_diff} = #{abs_sum} - #{abs_summary}\n "
+    msg = "smoketest in #{@filename}:\n#{abs_diff_msg}\n#{abs_sum_statement_msg}"
+    if abs_diff.abs < 0.02
+      logger.info(msg)
+    else
       STDERR.puts msg
       logger.error(msg)
     end

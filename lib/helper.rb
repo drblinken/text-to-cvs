@@ -13,7 +13,7 @@ module Helper
   end
 
   def money_sum(values)
-    values.reduce{ |sum, value| sum + value*100 }/100
+    (values.reduce{ |sum, value| sum + value*100 }/100).round(2)
   end
 
 end

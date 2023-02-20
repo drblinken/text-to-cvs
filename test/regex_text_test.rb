@@ -87,6 +87,13 @@ class RegexTextTest < Minitest::Test
     end
   end
 
+  def test_salso_sonstige
+    text = "Saldosonstige Transaktionen"
+    line ="Saldosonstige Transaktionen 0,19"
+    assert_equal(text, extract_text(line))
+
+  end
+
 
 end
 

@@ -51,14 +51,35 @@ module AmexRegexp
     BigDecimal(str)
   end
 
-  #@@prefix_re = /(\d{4}\.\d):(\d{4}\.\d)-- /
-  PREFIX_RE = /^(\d{4}\.\d):(\d{4}\.\d)--( (.*))?$/
+  xy = '(\d{4}\.\d)'
+  d = '(\d?\d)'
+  xy_part = format('^%s:%s',xy,xy)
+  slice_info_part = format('(--%s\/%s\/%s)?',d,d,d)
+  prefix_str = format('%s%s--( (.*))?$',xy_part,slice_info_part)
+  PREFIX_RE = Regexp.new(prefix_str)
 
+
+  # Match 5
+  # 1.	2014.4
+  # 2.	2163.2
+  # 3.	--1/12/19
+  # 4.	1
+  # 5.	12
+  # 6.	19
+  # 7.	CR
+  # 8.	CR
+  def extract_prefix_hint(m)
+    return nil unless m[3]
+    Hint.new(slice: m[4].to_i,slice_i: m[5].to_i,entry_id: m[6].to_i)
+  end
   def parse_prefix(line)
     m = PREFIX_RE.match(line)
     if m
-      content = m[4] || ""
-      Line.new(line: content, x: m[1], y: m[2])
+      content = m[8] || ""
+      x = m[1] || "000000"
+      y = m[2] || "000000"
+      hint = extract_prefix_hint(m)
+      Line.new(line: content, x: m[1], y: m[2], hint: hint)
     else
       nil
     end

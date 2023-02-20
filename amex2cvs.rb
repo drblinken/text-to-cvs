@@ -454,8 +454,11 @@ class Converter
   end
 
   def log_sorted
+
     relevant = @lines.select { |l| !l.entry.nil? }
-    sorted = relevant.sort_by { |line| line.y }
+    #puts relevant.select { |line| line.y.nil?}.inspect
+    # puts relevant.map{  |line| line.y  == "" ? "0000000" : line.y }
+    sorted = relevant.sort_by { |line| line.y || "0000000" }
     sorted.map(&:to_log).join("\n")
   end
 
@@ -506,7 +509,7 @@ files.each do |filename|
     end
     write_header = false
   rescue Exception => e
-    msg = "error parsing #{filename}\n" + e.message + "\n" + e.backtrace.inspect
+    msg = "error parsing #{filename}\n" + e.message + "\n" + e.backtrace.join("\n")
     logger.error(msg)
     STDERR.puts msg
   end

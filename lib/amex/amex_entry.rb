@@ -16,7 +16,7 @@ AmexEntry = Struct.new(:id, :date, :value_date, :text, :amount, :cr, :lines, key
   end
 
   def cvs_values
-    slice = lines.map{ |l| "#{l.slice}/#{l.slice_i}"}.uniq.join(", ")
+    slice = lines.map{ |l| "#{l.slice}/#{l.slice_i}/#{id}"}.uniq.join(", ")
     [id, date, value_date, quote(text), amount_s , cr, quote(lines.map(&:line_no)) , quote(slice) ]
   end
 end

@@ -9,4 +9,5 @@ Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :slice_i, :entry, keyw
     entry_id = entry ? entry.id : "+"
     "#{x}:#{y}-#{part}/#{slice}/#{slice_i}/#{entry_id}-- #{line}"
   end
+
 end

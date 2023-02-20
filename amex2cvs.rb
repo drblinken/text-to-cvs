@@ -332,36 +332,38 @@ class Converter
     candidates[0]
   end
 
-  def check_balance
-    # check_saldo
-    saldo = find_saldo
-    other_saldo = find_other_saldo
-    expr = "saldo_statement = saldo + other_saldo"
-    #saldo_statement = saldo + other_saldo
-    saldo_statement, saldo_statement_msg = eval_and_msg(expr,binding)
-    # puts @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.inspect
-    saldo_computed = money_sum(@entries.map { |e| is_payment(e.text) ? 0 : e.amount })
-    expr = "saldo_diff = saldo_statement - saldo_computed"
-    saldo_diff, saldo_diff_msg = eval_and_msg(expr, binding)
-    saldo_diff = saldo_diff.round(2)
-    # saldo_diff = (saldo_statement - saldo_computed).round(2)
-    msg = "saldo in #{@filename}: \n#{saldo_diff_msg}\n#{saldo_statement_msg}"
-    if saldo_diff.abs < 0.02
+  def check_for_zero(name,expr,binding)
+    diff, msg =  eval_and_msg(expr,binding)
+    msg = "#{name} in #{@filename}: \n#{msg}"
+    if diff.abs < 0.02
       logger.info(msg)
     else
       STDERR.puts msg
       logger.error(msg)
     end
+  end
+  def check_balance_saldo
+    saldo_statement = find_saldo
+    other_saldo_statement = find_other_saldo
+    saldo_computed = @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.reduce(&:+)
 
+    # expr = "saldo_statement = saldo + other_saldo"
+    expr = "saldo_diff = saldo_statement + other_saldo_statement - saldo_computed"
+    check_for_zero("saldo",expr, binding)
+  end
+
+  def check_smoke_test_old
     # this doesn't make sense, but serves as a smoke test:
     gutschriften, belastungen = find_summary
+
+
     gutschriften = gutschriften.abs
     belastungen = belastungen.abs
     expr = "abs_sum_statement = gutschriften + belastungen"
     abs_sum_statement, abs_sum_statement_msg = eval_and_msg(expr,binding)
     # is_payment(e.text) ? 0 :
     puts @entries.map { |e| e.amount.abs }.inspect
-    abs_sum_computed = money_sum(@entries.map { |e| e.amount.abs })
+    abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
     abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
     expr = "abs_diff = abs_sum_computed - abs_sum_statement"
     abs_diff , abs_diff_msg = eval_and_msg(expr,binding)
@@ -375,6 +377,51 @@ class Converter
     end
   end
 
+  def check_smoke_test
+    # this tests various sums
+    gutschriften, belastungen = find_summary
+    gutschriften_statement = gutschriften.abs
+    belastungen_statement = belastungen.abs
+
+    abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
+    expr = "abs_diff =  gutschriften + belastungen - abs_sum_computed"
+    check_for_zero("smoketest only positive values ",expr,binding)
+
+    sum_gutschriften_computed = @entries.map { |e| e.amount < 0 ? e.amount.abs : 0 }.reduce(&:+)
+    sum_belastungen_computed = @entries.map { |e| e.amount > 0 ? e.amount.abs : 0 }.reduce(&:+)
+    expr = "diff_belastungen = belastungen_statement - sum_belastungen_computed"
+    check_for_zero("smoketest belastungen",expr,binding)
+    expr = "diff_gutschriften = gutschriften_statement - sum_gutschriften_computed"
+    check_for_zero("smoketest gutschriften",expr,binding)
+  end
+  def check_balance_saldo_old
+    saldo = find_saldo
+    other_saldo = find_other_saldo
+    expr = "saldo_statement = saldo + other_saldo"
+    saldo_statement, saldo_statement_msg = eval_and_msg(expr,binding)
+
+    saldo_computed = @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.reduce(&:+)
+    expr = "saldo_diff = saldo_statement - saldo_computed"
+    saldo_diff, saldo_diff_msg = eval_and_msg(expr, binding)
+    saldo_diff = saldo_diff
+    # saldo_diff = (saldo_statement - saldo_computed).round(2)
+    msg = "saldo in #{@filename}: \n#{saldo_diff_msg}\n#{saldo_statement_msg}"
+    if saldo_diff.abs < 0.02
+      logger.info(msg)
+    else
+      STDERR.puts msg
+      logger.error(msg)
+    end
+  end
+  def check_balance
+
+    check_balance_saldo
+    # check_balance_saldo_old
+
+    check_smoke_test
+    # check_smoke_test_old
+  end
+
   def run_checks
     puts "..."
     check_slice_sizes
@@ -384,8 +431,12 @@ class Converter
   def result
     result = []
     # result << timestamp
-    result << AmexEntry.cvs_header.join(DEL) if @write_header
-    result << @line_entries.flatten.map { |e| e.cvs_values.join(DEL) }
+    if @write_header
+      header = AmexEntry.cvs_header. << "file name"
+      result << header.join(DEL)
+    end
+    values = @line_entries.flatten.map { |e| (e.cvs_values.append(@filename)).join(DEL) }
+    result.append(*values)
     result.join("\n") + "\n"
   end
 

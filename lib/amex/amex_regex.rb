@@ -1,4 +1,5 @@
 require './lib/amex/line.rb'
+require 'bigdecimal'
 module AmexRegexp
 
   # regexes to identify the main information parts
@@ -17,7 +18,7 @@ module AmexRegexp
   SALDO_SONSTIGE_RE = /(Saldo\s*sonstige\s*Transaktionen)/
 
   AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)($|Seite)/,
-              amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR))/,
+              amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR|Sonstige Transaktionen))/,
               # amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR))/,
               text: TEXT_RE_BOTH
   }
@@ -46,7 +47,8 @@ module AmexRegexp
   end
 
   def parse_amount(amount)
-    amount.gsub('.', '').gsub(',', '.').to_f
+    str = amount.gsub('.', '').gsub(',', '.')
+    BigDecimal(str)
   end
 
   #@@prefix_re = /(\d{4}\.\d):(\d{4}\.\d)-- /

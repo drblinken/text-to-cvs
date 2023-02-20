@@ -2,6 +2,7 @@
 require './lib/amex/amex_regex.rb'
 require './lib/amex/line.rb'
 require './lib/amex/amex_entry.rb'
+require './lib/helper.rb'
 require 'logger'
 if ARGV.size < 1
   puts 'usage: ./gls2cvs.rb <dirname>'
@@ -13,6 +14,7 @@ DEL = "\t"
 
 class Converter
   include AmexRegexp
+  include Helper
   @@no_entries = 0
   attr_reader :logger
 
@@ -333,20 +335,25 @@ class Converter
     # check_saldo
     saldo = find_saldo
     other_saldo = find_other_saldo
-    saldo_complete = saldo + other_saldo
-    puts @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.inspect
-    saldo_sum = @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.reduce(:+).round(2)
-    saldo_diff = (saldo_complete - saldo_sum).round(2)
-
+    expr = "saldo_statement = saldo + other_saldo"
+    #saldo_statement = saldo + other_saldo
+    saldo_statement, saldo_statement_msg = eval_and_msg(expr,binding)
+    # puts @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.inspect
+    saldo_computed = money_sum(@entries.map { |e| is_payment(e.text) ? 0 : e.amount })
+    expr = "saldo_diff = saldo_statement - saldo_computed"
+    saldo_diff, saldo_diff_msg = eval_and_msg(expr, binding)
+    saldo_diff = saldo_diff.round(2)
+    # saldo_diff = (saldo_statement - saldo_computed).round(2)
     unless saldo_diff.abs < 0.02
-      msg = "saldo in #{@filename}: saldo_diff = saldo_complete - saldo_sum #{saldo_diff} = #{saldo_complete} - #{saldo_sum}"
+      # msg = "saldo in #{@filename}: #{saldo_diff}-saldo_diff = (#{saldo_statement}-saldo_statement - #{saldo_computed}-saldo_computed).round(2)\n" + "#{saldo_statement}(saldo_statement) = #{saldo}(saldo) + #{other_saldo}(other_saldo)"
+      msg = "saldo in #{@filename}: #{saldo_diff_msg}\n#{saldo_statement_msg}"
       STDERR.puts msg
       logger.error(msg)
     end
 
     # this doesn't make sense, but serves as a smoke test:
     gutschriften, belastungen = find_summary
-    abs_sum = @entries.map { |e| e.amount.abs }.reduce(:+).round(2)
+    abs_sum = money_sum(@entries.map { |e| e.amount.abs })
     abs_summary = gutschriften.abs + belastungen.abs
 
     abs_diff = (abs_sum - abs_summary).round(2)

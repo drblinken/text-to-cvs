@@ -18,6 +18,7 @@ module AmexRegexp
 
   AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR$)/,
               amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen|CR))/,
+              # amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR))/,
               text: TEXT_RE_BOTH
   }
 

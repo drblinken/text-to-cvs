@@ -12,9 +12,17 @@ Line = Struct.new(:line_no, :line, :x, :y, :part, :slice, :slice_i, :entry, :hin
   def hint_log
     hint ? "--#{hint.to_s}" : ""
   end
+  def check_text
+    return "" if entry.nil?
+    return "" if !part.include?(:text)
+    return "" if line == entry.text
+    return "" if line == entry.text + "www.americanexpress.de"
+    #STDERR.puts("Text complete? [#{line}||#{entry.text}")
+    "--EXTRACTED_TEXT--#{entry.text}"
+  end
   def to_log
     entry_id = entry ? entry.id : "+"
-    "#{x}:#{y}-#{part}/#{slice}/#{slice_i}/#{entry_id}-- #{line}"
+    "#{x}:#{y}-#{part}-#{slice}_#{slice_i}_#{entry_id}-- #{line}#{check_text}"
   end
 
 end

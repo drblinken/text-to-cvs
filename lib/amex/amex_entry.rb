@@ -6,7 +6,7 @@ AmexEntry = Struct.new(:id, :date, :value_date, :text, :amount, :saldo, :cr, :li
     self.saldo = false
     self.lines = []
   end
-  def amount_s
+  def amount_sf
     amount.round(2).to_s('F').gsub(".",",")
   end
   def self.cvs_header
@@ -17,7 +17,7 @@ AmexEntry = Struct.new(:id, :date, :value_date, :text, :amount, :saldo, :cr, :li
   end
 
   def cvs_values
-    slice = lines.map{ |l| "#{l.slice}/#{l.slice_i}/#{id}"}.uniq.join(", ")
-    [id, date, value_date, quote(text), amount_s , saldo, cr, quote(lines.map(&:line_no)) , quote(slice) ]
+    slice = lines.map{ |l| "#{l.slice}_#{l.slice_i}_#{id}"}.uniq.join(", ")
+    [id, date, value_date, quote(text), amount_sf , saldo, cr, quote(lines.map(&:line_no)) , quote(slice) ]
   end
 end

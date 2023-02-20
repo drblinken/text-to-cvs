@@ -6,8 +6,8 @@ module AmexRegexp
   # Saldodeslaufenden Monats
   # text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
   #
-  text_re = '[A-Z][(0-9 A-Za-zäüö*.\/\+-]{2,}'
-  text_re_upper_only = '[A-Z][(0-9 A-Z*.\/\+-]{2,}'
+  text_re = '[A-ZÄÜÖ][(0-9 A-ZÄÜÖa-zäüö*.\/\+-]{2,}'
+  text_re_upper_only = '[A-ZÄÜÖ][(0-9 A-ZÄÜÖ*.\/\+-]{2,}'
 
   def self.at_start_or_end(text_re)
     Regexp.new("(^#{text_re}|#{text_re}$)")
@@ -93,7 +93,7 @@ module AmexRegexp
     end
   end
 
-  PAYMENT_REGEX = /ZAHLUNG ERHALTEN. BESTEN DANK.|Saldosonstige Transaktionen/
+  PAYMENT_REGEX = /ZAHLUNG ERHALTEN. BESTEN DANK.|Saldosonstige Transaktionen|ZAHLUNG\/ÜBERWEISUNG ERHALTEN BESTEN DANK|RETOURNIERTE LASTSCHRIFT/
 
   def is_payment(str)
     PAYMENT_REGEX =~ str

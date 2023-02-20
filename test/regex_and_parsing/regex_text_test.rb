@@ -90,6 +90,12 @@ class RegexTextTest < Minitest::Test
     end
   end
 
+  def test_umlaut
+    line = "ZAHLUNG/ÜBERWEISUNG ERHALTEN BESTEN DANK"
+    text = extract_text(line)
+    assert_equal line, text
+  end
+
   def test_saldo_sonstige
     text = "Saldosonstige Transaktionen"
     line ="Saldosonstige Transaktionen 0,19"

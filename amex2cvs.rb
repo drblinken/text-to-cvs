@@ -52,7 +52,7 @@ class Converter
         # entry.amount = 0
       end
     end
-    puts @entries.size
+    # puts @entries.size
 
   end
 
@@ -68,7 +68,7 @@ class Converter
   def add_lines_with_hints_to_slices
     [:date, :text].each do |part|
       lines_with_hints = @lines.select { |l| !l.hint.nil? && l.part.include?(part) }
-      puts lines_with_hints.inspect
+      # puts lines_with_hints.inspect
       lines_with_hints.each do |l|
         hint = l.hint
         slice, slice_i = hint.slice, hint.slice_i
@@ -299,7 +299,7 @@ class Converter
       end
     end
     if unassigned_cr_lines.size > 0
-      msg = "there are #{unassigned_cr_lines.size} unassigned cr items in lines: #{unassigned_cr_lines}"
+      msg = "there are #{unassigned_cr_lines.size} unassigned cr items in lines: #{unassigned_cr_lines.map(&:line_no)}"
       logger.warn(msg)
       STDERR.puts msg
     end
@@ -341,7 +341,7 @@ class Converter
     # {:date=>[14, 21, 36], :amount=>[14, 21, 36], :text=>[14, 21, 36]}
     return true if sizes.values.uniq.size == 1
     msg = "#{@filename}: slice lengths are unequal: #{sizes}"
-    puts msg
+    # puts msg
     logger.error(msg)
     STDERR.puts msg
     return false
@@ -356,7 +356,7 @@ class Converter
     unless candidates.size == 1
       STDERR.puts "candidates for saldo: #{candidates.map { |d| d.to_s('F') }}"
     end
-    candidates[0]
+    candidates.reduce(&:+)
   end
 
   def find_other_saldo
@@ -408,8 +408,8 @@ class Converter
 
   def check_smoke_test
     entries_to_use = @entries.select { |e| !@@re_other_saldo_text.match(e.text) }
-    puts entries_to_use.inspect
-    puts entries_to_use.size
+    #  puts entries_to_use.inspect
+    #  puts entries_to_use.size
     # this tests various sums
     gutschriften, belastungen = find_summary
     gutschriften_statement = gutschriften.abs

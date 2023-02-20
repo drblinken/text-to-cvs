@@ -69,16 +69,16 @@ class Converter
         @slices[:date].each_with_index do |slice, slice_no|
           amount_index = 0
           slice.each_with_index do |index_in_line_array, index_in_slice|
-            puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
+            # puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
             if @lines[index_in_line_array] =~ @@re_cr
               @line_entries[slice_no][amount_index].cr = @lines[index_in_line_array]
-              puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{amount_index}"
+              # puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{amount_index}"
             else
               amount_index += 1
 
             end
           end
-            puts slice.inspect
+          # puts slice.inspect
         end
 
     end

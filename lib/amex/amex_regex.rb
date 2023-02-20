@@ -12,7 +12,7 @@ module AmexRegexp
   def self.at_start_or_end(text_re)
     Regexp.new("(^#{text_re}|#{text_re}$)")
   end
-
+  RE_CR = /CR/
   TEXT_RE_CAPS = at_start_or_end(text_re_upper_only)
   TEXT_RE_BOTH = at_start_or_end(text_re)
   SALDO_SONSTIGE_RE = /(Saldo\s*sonstige\s*Transaktionen)/
@@ -146,5 +146,9 @@ module AmexRegexp
   def date_extract_cr(line)
     AMREGEX[:date].match(line)[4]
     #date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)($|Seite)/,
+  end
+
+  def is_cr(line)
+    RE_CR.match(line)
   end
 end

@@ -31,7 +31,6 @@ class Converter
     @slices = Hash.new { |hash, key| hash[key] = [] }
     @slice_lines = Hash.new { |hash, key| hash[key] = [] } # ?
 
-    @@re_cr = /CR/
     @@re_saldo = /Saldo.*laufenden.* ([\.\d]+,\d\d)/
     @@re_other_saldo_text = /Saldo.*sonstige.*Transaktionen/
     @@re_other_saldo = /Saldo.*sonstige.*Transaktionen ([\.\d]+,\d\d)/
@@ -56,6 +55,7 @@ class Converter
     puts @entries.size
 
   end
+
   def mark_empty_texts
     @entries.each do |entry|
       if entry.text.nil? || entry.text == ""
@@ -66,10 +66,10 @@ class Converter
   end
 
   def add_lines_with_hints_to_slices
-    [:date, :text].each do | part |
-      lines_with_hints = @lines.select{|l| !l.hint.nil? && l.part.include?(part)}
+    [:date, :text].each do |part|
+      lines_with_hints = @lines.select { |l| !l.hint.nil? && l.part.include?(part) }
       puts lines_with_hints.inspect
-      lines_with_hints.each do | l |
+      lines_with_hints.each do |l|
         hint = l.hint
         slice, slice_i = hint.slice, hint.slice_i
 
@@ -78,12 +78,12 @@ class Converter
         logger.warn("#{part} slice had already an entry: #{hint}") if target_slice[slice_i]
         target_slice[slice_i] = l.line_no
 
-        entry = retrieve_entry(slice,slice_i)
+        entry = retrieve_entry(slice, slice_i)
         if part == :date
-          add_date_to_entry(l,entry,slice,slice_i)
+          add_date_to_entry(l, entry, slice, slice_i)
         else
-          text =extract_text(l.line)
-          add_text_to_entry(l,entry,slice, slice_i,text)
+          text = extract_text(l.line)
+          add_text_to_entry(l, entry, slice, slice_i, text)
         end
       end
     end
@@ -93,6 +93,7 @@ class Converter
     find_slices
     fill_amounts
     remove_cr_lines_from_dates
+    process_remaining_cr_lines # for the lines that were not part of date slices
     add_lines_with_hints_to_slices
     fill_dates
     fill_texts
@@ -136,6 +137,7 @@ class Converter
     logger.debug("slice sizes after initial collection: #{collect_sizes}")
     consolidate_slices
   end
+
   def consolidate_amounts(threshold)
     logger.debug("sizes before consolidate_amounts: #{collect_sizes}")
     @slices[:amount].each do |slice|
@@ -145,16 +147,17 @@ class Converter
     keep_slices = []
     last_index = @slices[:amount].size
     last_index -= 1
-    @slices[:amount].each_with_index do | slice, i |
+    @slices[:amount].each_with_index do |slice, i|
       if (i == last_index) || (slice.size >= threshold)
         keep_slices << i
       end
     end
     logger.debug("keep_slices: #{keep_slices},#{@slices[:amount]}")
-    @slices[:amount] = keep_slices.map{|i| @slices[:amount][i]}
+    @slices[:amount] = keep_slices.map { |i| @slices[:amount][i] }
 
     logger.debug("sizes after consolidate_amounts: #{collect_sizes},#{@slices[:amount]} #")
   end
+
   # group consecutive lines
   def consolidate_slices
     threshold = 4
@@ -169,7 +172,7 @@ class Converter
       logger.debug("#{@slices[part].size} slices: #{@slices[part]}")
       # discard short slices if there are not hints in it
       #   this might skip orphans, must be marked by hand in .txt file
-      @slices[part].reject! { |a| !keep_slice?(a,threshold) }
+      @slices[part].reject! { |a| !keep_slice?(a, threshold) }
 
       logger.debug("#{@slices[part].size} slices after discarding short ones: #{@slices[part]}")
     end
@@ -177,16 +180,16 @@ class Converter
 
   end
 
-  def keep_slice?(a,threshold)
+  def keep_slice?(a, threshold)
     return a.size >= threshold
 
-   #  original_size = a.size
-   #  filename = @filename
-   #  return true if a.size >= threshold
-   #  return false if a.none?{ | line_no | !@lines[line_no].hint.nil? }
-   #  # ok, it is short but some lines have hints. only keep those!
-   #  a.reject!{ | line_no | @lines[line_no].hint.nil? }
-   #  return true
+    #  original_size = a.size
+    #  filename = @filename
+    #  return true if a.size >= threshold
+    #  return false if a.none?{ | line_no | !@lines[line_no].hint.nil? }
+    #  # ok, it is short but some lines have hints. only keep those!
+    #  a.reject!{ | line_no | @lines[line_no].hint.nil? }
+    #  return true
   end
 
   def inject
@@ -260,28 +263,45 @@ class Converter
       slice.each_with_index do |index_in_line_array, index_in_slice|
         # puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
         line = @lines[index_in_line_array]
-        if line.line =~ @@re_cr
+        if is_cr(line.line)
           cr_indices << index_in_line_array
           if hint = line.hint
             entry = @line_entries[hint.slice][hint.slice_i]
+            logger.info("add cr in date slice from hint: #{hint.slice}/#{hint.slice_i}, amount: #{entry.amount}")
           else
             entry = retrieve_entry(slice_no, amount_index - 1)
           end
           line = @lines[index_in_line_array]
-          line.part << :cr
-          line.entry = entry
-          line.slice = slice_no
-          line.slice_i = entry.lines[0].slice_i
-          entry.cr = date_extract_cr(line.line)
-          entry.amount = entry.amount * -1
-          entry.lines << line
+          add_cr_to_entry(line, entry, slice_no)
           # puts "found CR in #{slice_no}/#{index_in_slice}, adding to #{entry}"
         else
           amount_index += 1
         end
       end
-      slice.reject! { |i| @lines[i].line =~ @@re_cr }
+      slice.reject! { |i| is_cr(@lines[i].line) }
       logger.debug("#{cr_indices.size} cr indices: #{cr_indices}")
+    end
+  end
+
+  def process_remaining_cr_lines
+    unassigned_cr_lines = []
+    all_lines = @lines
+    @lines.each do |l|
+      if is_cr(l.line) && l.entry.nil?
+        if hint = l.hint
+          entry = @line_entries[hint.slice][hint.slice_i]
+          logger.info("add cr from hint: #{hint.slice}/#{hint.slice_i}, amount: #{entry.amount}")
+          add_cr_to_entry(l, entry, entry.lines[0].slice)
+        else
+          unassigned_cr_lines << l
+        end
+
+      end
+    end
+    if unassigned_cr_lines.size > 0
+      msg = "there are #{unassigned_cr_lines.size} unassigned cr items in lines: #{unassigned_cr_lines}"
+      logger.warn(msg)
+      STDERR.puts msg
     end
   end
 
@@ -292,7 +312,7 @@ class Converter
         m = re_match(:date, line.line)
         if m
           entry = retrieve_entry(slice_no, index_in_slice)
-          add_date_to_entry(line, entry, slice_no, index_in_slice,  m)
+          add_date_to_entry(line, entry, slice_no, index_in_slice, m)
         else
           STDERR.puts("ERROR: found no date in fill_dates: #{line.line}")
         end
@@ -305,10 +325,10 @@ class Converter
       slice.each_with_index do |index_in_line_array, index_in_slice|
         line = @lines[index_in_line_array]
         #  text: /(^[A-Z][0-9 A-Z\*\.\/-]{2,}|[A-Z][0-9 A-Z\*\.\/-]{2,}$)/
-        text =extract_text(line.line)
+        text = extract_text(line.line)
         if text
           entry = retrieve_entry(slice_no, index_in_slice)
-          add_text_to_entry( line,entry, slice_no, index_in_slice, text)
+          add_text_to_entry(line, entry, slice_no, index_in_slice, text)
         else
           STDERR.puts("ERROR: found no text in fill_texts: #{line.line}")
         end
@@ -334,14 +354,14 @@ class Converter
       m ? parse_amount(m[1]) : nil
     end.compact
     unless candidates.size == 1
-      STDERR.puts "candidates for saldo: #{candidates.map{|d| d.to_s('F')}}"
+      STDERR.puts "candidates for saldo: #{candidates.map { |d| d.to_s('F') }}"
     end
     candidates[0]
   end
 
   def find_other_saldo
 
-    os_entries = @entries.select{|le| @@re_other_saldo_text.match(le.text)}
+    os_entries = @entries.select { |le| @@re_other_saldo_text.match(le.text) }
     logger.warn("@entries contains more than one line with other saldo size: #{os_entries.size}") if os_entries.size > 1
     return os_entries[0].amount if os_entries.size > 0
     candidates = @lines.map do |l|
@@ -365,8 +385,8 @@ class Converter
     candidates[0]
   end
 
-  def check_for_zero(name,expr,binding)
-    diff, msg =  eval_and_msg(expr,binding)
+  def check_for_zero(name, expr, binding)
+    diff, msg = eval_and_msg(expr, binding)
     msg = "#{name} in #{@filename}: \n#{msg}"
     if diff.abs < 0.02
       logger.info(msg)
@@ -375,6 +395,7 @@ class Converter
       logger.error(msg)
     end
   end
+
   def check_balance_saldo
     saldo_statement = find_saldo
     other_saldo_statement = find_other_saldo
@@ -382,11 +403,11 @@ class Converter
 
     # expr = "saldo_statement = saldo + other_saldo"
     expr = "saldo_diff = saldo_statement + other_saldo_statement - saldo_computed"
-    check_for_zero("saldo",expr, binding)
+    check_for_zero("saldo", expr, binding)
   end
 
   def check_smoke_test
-    entries_to_use = @entries.select{ |e| !@@re_other_saldo_text.match(e.text) }
+    entries_to_use = @entries.select { |e| !@@re_other_saldo_text.match(e.text) }
     puts entries_to_use.inspect
     puts entries_to_use.size
     # this tests various sums
@@ -396,14 +417,14 @@ class Converter
 
     abs_sum_computed = entries_to_use.map { |e| e.amount.abs }.reduce(&:+)
     expr = "abs_diff =  gutschriften + belastungen - abs_sum_computed"
-    check_for_zero("smoketest sum absolute values ",expr,binding)
+    check_for_zero("smoketest sum absolute values ", expr, binding)
 
     sum_gutschriften_computed = entries_to_use.map { |e| e.amount < 0 ? e.amount.abs : 0 }.reduce(&:+)
     sum_belastungen_computed = entries_to_use.map { |e| e.amount > 0 ? e.amount.abs : 0 }.reduce(&:+)
     expr = "diff_belastungen = belastungen_statement - sum_belastungen_computed"
-    check_for_zero("summe belastungen",expr,binding)
+    check_for_zero("summe belastungen", expr, binding)
     expr = "diff_gutschriften = gutschriften_statement - sum_gutschriften_computed"
-    check_for_zero("summe gutschriften",expr,binding)
+    check_for_zero("summe gutschriften", expr, binding)
   end
 
   def check_balance
@@ -420,7 +441,7 @@ class Converter
     result = []
     # result << timestamp
     if @write_header
-      header = AmexEntry.cvs_header. << "file name"
+      header = AmexEntry.cvs_header.<< "file name"
       result << header.join(DEL)
     end
     # values = @line_entries.flatten.map { |e| (e.cvs_values.append(@filename)).join(DEL) }
@@ -445,7 +466,7 @@ class Converter
   def log_sorted
 
     relevant = @lines.select { |l| !l.entry.nil? }
-    #puts relevant.select { |line| line.y.nil?}.inspect
+    # puts relevant.select { |line| line.y.nil?}.inspect
     # puts relevant.map{  |line| line.y  == "" ? "0000000" : line.y }
     sorted = relevant.sort_by { |line| line.y || "0000000" }
     sorted.map(&:to_log).join("\n")
@@ -457,6 +478,16 @@ class Converter
   end
 
   private
+
+  def add_cr_to_entry(line, entry, slice_no)
+    line.part << :cr
+    line.entry = entry
+    line.slice = slice_no
+    line.slice_i = entry.lines[0].slice_i
+    entry.cr = date_extract_cr(line.line)
+    entry.amount = entry.amount * -1
+    entry.lines << line
+  end
 
   def add_text_to_entry(line, entry, slice_no, slice_i, text)
     line.entry = entry
@@ -487,7 +518,7 @@ puts globpattern if files.size == 0
 write_header = true
 
 year_match = /.*\/(\d{4}).*/.match(dirname)
-YEAR = year_match ? year_match[1] :"2121"
+YEAR = year_match ? year_match[1] : "2121"
 files.each do |filename|
   puts "------ start file #{filename}"
   logger_filename = filename.gsub(/.txt$/, '-debug.log')
@@ -513,7 +544,7 @@ files.each do |filename|
     #  outputfile.write converter.timestamp
     #  outputfile.write "\n"
     #  outputfile.write converter.log_sorted
-    #end
+    # end
     File.open(output_filename, 'w') do |outputfile|
       outputfile.write converter.result
     end

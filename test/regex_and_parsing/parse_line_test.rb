@@ -2,7 +2,7 @@
 
 require 'minitest/autorun'
 require './lib/amex/amex_regex.rb'
-class TextExtractorParseTest < Minitest::Test
+class ParseLineTest < Minitest::Test
   include AmexRegexp
   def test_empty_line
     line = "3041.9:3078.5--"

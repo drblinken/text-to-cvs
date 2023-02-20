@@ -17,9 +17,16 @@ module AmexRegexp
   TEXT_RE_BOTH = at_start_or_end(text_re)
   SALDO_SONSTIGE_RE = /(Saldo\s*sonstige\s*Transaktionen)/
 
-  AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)($|Seite)/,
-              amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR|Sonstige Transaktionen))/,
-              # amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR))/,
+  amount_noise = '(Saldo\s?des\s?laufenden Monats|CR|^Sonstige Transaktionen)'
+  amount_specials = '^(Saldosonstige Transaktionen |Hinweise zu Ihrer Kartenabrechnung)'
+  amount_regex_str = format('%s?(([\.\d]+,\d\d)|%s)',amount_specials,amount_noise)
+  amount_re = Regexp.new(amount_regex_str)
+
+  str_old = "^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR|Sonstige Transaktionen))"
+
+    AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)($|Seite)/,
+              amount: amount_re,
+                # amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|CR))/,
               text: TEXT_RE_BOTH
   }
 
@@ -33,6 +40,7 @@ module AmexRegexp
 
   def is_amount_noise(str, logger = nil)
     m = AMREGEX[:amount].match(str)
+    throw Exception.new("should match amount regex: #{str}") unless m
     is_noise = !m[4].nil?
     logger.debug("---noise #{is_noise}: #{m.inspect} --#{str}") if logger
     is_noise = is_noise || SUMMARY_REGEX.match(str)

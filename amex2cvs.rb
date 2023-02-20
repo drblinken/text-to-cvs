@@ -310,7 +310,7 @@ class Converter
       m ? parse_amount(m[1]) : nil
     end.compact
     unless candidates.size == 1
-      STDERR.puts "candidates for saldo: #{candidates.inspect}"
+      STDERR.puts "candidates for saldo: #{candidates.map{|d| d.to_s('F')}}"
     end
     candidates[0]
   end
@@ -357,31 +357,6 @@ class Converter
     check_for_zero("saldo",expr, binding)
   end
 
-  def check_smoke_test_old
-    # this doesn't make sense, but serves as a smoke test:
-    gutschriften, belastungen = find_summary
-
-
-    gutschriften = gutschriften.abs
-    belastungen = belastungen.abs
-    expr = "abs_sum_statement = gutschriften + belastungen"
-    abs_sum_statement, abs_sum_statement_msg = eval_and_msg(expr,binding)
-    # is_payment(e.text) ? 0 :
-    puts @entries.map { |e| e.amount.abs }.inspect
-    abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
-    abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
-    expr = "abs_diff = abs_sum_computed - abs_sum_statement"
-    abs_diff , abs_diff_msg = eval_and_msg(expr,binding)
-
-    msg = "smoketest in #{@filename}:\n#{abs_diff_msg}\n#{abs_sum_statement_msg}"
-    if abs_diff.abs < 0.02
-      logger.info(msg)
-    else
-      STDERR.puts msg
-      logger.error(msg)
-    end
-  end
-
   def check_smoke_test
     # this tests various sums
     gutschriften, belastungen = find_summary
@@ -399,32 +374,10 @@ class Converter
     expr = "diff_gutschriften = gutschriften_statement - sum_gutschriften_computed"
     check_for_zero("smoketest gutschriften",expr,binding)
   end
-  def check_balance_saldo_old
-    saldo = find_saldo
-    other_saldo = find_other_saldo
-    expr = "saldo_statement = saldo + other_saldo"
-    saldo_statement, saldo_statement_msg = eval_and_msg(expr,binding)
 
-    saldo_computed = @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.reduce(&:+)
-    expr = "saldo_diff = saldo_statement - saldo_computed"
-    saldo_diff, saldo_diff_msg = eval_and_msg(expr, binding)
-    saldo_diff = saldo_diff
-    # saldo_diff = (saldo_statement - saldo_computed).round(2)
-    msg = "saldo in #{@filename}: \n#{saldo_diff_msg}\n#{saldo_statement_msg}"
-    if saldo_diff.abs < 0.02
-      logger.info(msg)
-    else
-      STDERR.puts msg
-      logger.error(msg)
-    end
-  end
   def check_balance
-
     check_balance_saldo
-    # check_balance_saldo_old
-
     check_smoke_test
-    # check_smoke_test_old
   end
 
   def run_checks
@@ -479,6 +432,7 @@ re = /\.txt/
 globpattern = dirname =~ re ? dirname : dirname + '/*.txt'
 files = Dir.glob(globpattern)
 puts "files: #{files}"
+puts globpattern if files.size == 0
 write_header = true
 
 year_match = /.*\/(\d{4}).*/.match(dirname)
@@ -504,11 +458,11 @@ files.each do |filename|
       outputfile.write converter.timestamp
       outputfile.write converter.log
     end
-    File.open(log_sorted_filename, 'w') do |outputfile|
-      outputfile.write converter.timestamp
-      outputfile.write "\n"
-      outputfile.write converter.log_sorted
-    end
+    # File.open(log_sorted_filename, 'w') do |outputfile|
+    #  outputfile.write converter.timestamp
+    #  outputfile.write "\n"
+    #  outputfile.write converter.log_sorted
+    #end
     File.open(output_filename, 'w') do |outputfile|
       outputfile.write converter.result
     end

@@ -215,9 +215,14 @@ class Converter
       cr_indices = []
       slice.each_with_index do |index_in_line_array, index_in_slice|
         # puts "processing #{slice_no}/#{index_in_slice} amount_index:#{amount_index}"
-        if @lines[index_in_line_array].line =~ @@re_cr
+        line = @lines[index_in_line_array]
+        if line.line =~ @@re_cr
           cr_indices << index_in_line_array
-          entry = retrieve_entry(slice_no, amount_index - 1)
+          if hint = line.hint
+            entry = @line_entries[hint.slice][hint.slice_i]
+          else
+            entry = retrieve_entry(slice_no, amount_index - 1)
+          end
           line = @lines[index_in_line_array]
           line.part << :cr
           line.entry = entry

@@ -15,8 +15,8 @@ module AmexRegexp
   TEXT_RE_CAPS = at_start_or_end(text_re_upper_only)
   TEXT_RE_BOTH = at_start_or_end(text_re)
 
-  AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)/,
-              amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen))/,
+  AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR$)/,
+              amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen|CR))/,
               text: TEXT_RE_BOTH
   }
 
@@ -85,7 +85,9 @@ module AmexRegexp
   end
 
   def extract_text(str)
-    return nil if /xxxx-xxxxxx.*Seite/.match(str)
+    return str if /(DorintGmbHDorintHoteBremen|OnlineStoreHUGOBOSSMetzingen)/.match(str)
+    return nil if /(xxxx-xxxxxx.*Seite|EIGENVERTRIEB C|Flugstrecke|^Nach)/.match(str)
+
     m_both = TEXT_RE_BOTH.match(str)
     m_caps = TEXT_RE_CAPS.match(str)
     return nil unless m_both

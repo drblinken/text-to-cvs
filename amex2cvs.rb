@@ -136,13 +136,13 @@ class Converter
       logger.debug("-----created line_entries: #{@line_entries}, sizes: #{@line_entries.map(&:size)}")
     end
     def retrieve_entry(slice_no,slice_i)
-      entry = @line_entries[slice_no][slice_i]
-      unless entry
+      if @line_entries[slice_no].nil? ||  (entry = @line_entries[slice_no][slice_i]).nil?
         write_log
         logger.error("retrieve_entry: could not find entry #{slice_no}/#{slice_i}")
         logger.error("called from #{caller()[0]}")
         logger.error(collect_sizes)
         logger.error(check_slice_sizes)
+        # logger.error("@slices: #{@slices}")
         STDERR.puts("#{@filename} - could not find entry, check debug log file!")
       end
       entry

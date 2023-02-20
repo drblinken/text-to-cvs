@@ -76,6 +76,13 @@ class RegexTextTest < Minitest::Test
     assert_nil extract_text(line)
   end
 
+  def test_accept_as_is
+    lines = ["DorintGmbHDorintHoteBremen", "OnlineStoreHUGOBOSSMetzingen"]
+    lines.each do | line |
+      assert_equal line, extract_text(line)
+    end
+  end
+
 
 end
 

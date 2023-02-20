@@ -33,4 +33,13 @@ class TestAmountRegex < Minitest::Test # MiniTest::Unit::TestCase
   def test_payment_received
     assert is_payment("ZAHLUNG ERHALTEN. BESTEN DANK.")
   end
+
+  def test_date_regex
+    strange = "EIGENVERTRIEB CRSOSFOVE6Y PK 0766996000651"
+    assert_nil AMREGEX[:date].match(strange)
+  end
+  def test_date_regex
+    m = AMREGEX[:date].match("CR")
+    assert_equal "CR", m[0]
+  end
 end

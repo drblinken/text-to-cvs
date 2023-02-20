@@ -142,12 +142,24 @@ class Converter
       logger.debug("lines found: #{@slices[part]}")
       # @slices[part] = @slices[part].slice_when { |prev, cur| cur != prev + 1 }.to_a
       logger.debug("#{@slices[part].size} slices: #{@slices[part]}")
-      # discard
-      @slices[part].reject! { |a| a.size < threshold } # this might skip short last page!!!
+      # discard short slices if there are not hints in it
+      #   this might skip orphans, must be marked by hand in .txt file
+      @slices[part].reject! { |a| !keep_slice?(a,threshold) }
+
       logger.debug("#{@slices[part].size} slices after discarding short ones: #{@slices[part]}")
     end
     logger.debug("slices after consolidation: #{collect_sizes}")
 
+  end
+
+  def keep_slice?(a,threshold)
+    original_size = a.size
+    filename = @filename
+    return true if a.size >= threshold
+    return false if a.none?{ | line_no | !@lines[line_no].hint.nil? }
+    # ok, it is short but some lines have hints. only keep those!
+    a.reject!{ | line_no | @lines[line_no].hint.nil? }
+    return true
   end
 
   def inject

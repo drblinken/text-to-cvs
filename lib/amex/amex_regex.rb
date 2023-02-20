@@ -4,24 +4,30 @@ module AmexRegexp
   # regexes to identify the main information parts
   # Saldodeslaufenden Monats
   # text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
+  #
   text_re = '[A-Z][(0-9 A-Za-z*.\/\+-]{2,}'
-  at_start_or_end = "(^#{text_re}|#{text_re}$)"
+  text_re_upper_only = '[A-Z][(0-9 A-Z*.\/\+-]{2,}'
+
+  def self.at_start_or_end(text_re)
+    Regexp.new("(^#{text_re}|#{text_re}$)")
+  end
+
+  TEXT_RE_CAPS = at_start_or_end(text_re_upper_only)
+  TEXT_RE_BOTH = at_start_or_end(text_re)
+
   AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR)/,
-            amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen))/,
-            text: Regexp.new(at_start_or_end)
+              amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen))/,
+              text: TEXT_RE_BOTH
   }
 
-
-
-  def re_match(which,str)
-    match = AMREGEX[which].match(str)
-    return nil unless match
+  def re_match(which, str)
     if :text == which
-      is_text(str) ? match : nil
+      extract_text(str)
     else
-      match
+      AMREGEX[which].match(str)
     end
   end
+
   def is_amount_noise(str, logger = nil)
     m = AMREGEX[:amount].match(str)
     is_noise = !m[4].nil?
@@ -39,41 +45,54 @@ module AmexRegexp
     amount.gsub('.', '').gsub(',', '.').to_f
   end
 
-
   #@@prefix_re = /(\d{4}\.\d):(\d{4}\.\d)-- /
   PREFIX_RE = /^(\d{4}\.\d):(\d{4}\.\d)--( (.*))?$/
+
   def parse_prefix(line)
     m = PREFIX_RE.match(line)
     if m
       content = m[4] || ""
-      Line.new( line: content, x: m[1], y: m[2])
+      Line.new(line: content, x: m[1], y: m[2])
     else
       nil
     end
   end
 
   PAYMENT_REGEX = /ZAHLUNG ERHALTEN. BESTEN DANK./
+
   def is_payment(str)
     PAYMENT_REGEX =~ str
   end
 
   SUMMARY_REGEX = /([\.\d]+,\d\d) ?\- ?([\.\d]+,\d\d) ?\+ ?([\.\d]+,\d\d) ?= ?([\.\d]+,\d\d)/
+
   def summary(str)
     m = SUMMARY_REGEX.match(str)
     return nil unless m
     # saldo letzter monat, gutschriften, belastungen, neuer salso
     # gutschriften, belastungen
-    [m[2],m[3]]
+    [m[2], m[3]]
   end
 
+  def count_lower(str)
+    str.scan(/[a-z]/).size
+  end
 
   def has_more_capital_letters(str)
-    upper =   str.scan(/[A-Z]/).size
-    lower = str.scan(/[a-z]/).size
+    upper = str.scan(/[A-Z]/).size
+    lower = count_lower(str)
     upper > lower
   end
 
-  def is_text(str)
-    has_more_capital_letters(str)
+  def extract_text(str)
+    m_both = TEXT_RE_BOTH.match(str)
+    m_caps = TEXT_RE_CAPS.match(str)
+    return nil unless m_both
+    text_both = m_both[1]
+    return text_both if m_caps && (text_both == m_caps[1])
+    return text_both if count_lower(text_both) < 4
+    return text_both if has_more_capital_letters(text_both)
+    return m_caps[1] if m_caps && m_caps[1] != "HRB 112342"
+    return nil
   end
 end

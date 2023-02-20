@@ -2,12 +2,14 @@
 
 require 'minitest/autorun'
 require './lib/amex/amex_regex.rb'
+
 class RegexTextTest < Minitest::Test
   include AmexRegexp
+
   def test_address
     line = "American Express Europe S.A. (Germany branch), Theodor-Heuss-Allee 112, 60486 Frankfurt a. M., Registergericht Frankfurt am Main, HRB 112342"
     assert AMREGEX[:text].match(line)
-    assert !is_text(line)
+    assert_nil extract_text(line)
   end
 
   def test_mixed_with_date
@@ -25,19 +27,30 @@ class RegexTextTest < Minitest::Test
              " 10.07 10.07 PAYPAL *BERLINERBAE     3022190011",
              " 10.07 10.07 AMZ*AMAZON.DE           800-279-6620",
              " 15.06 15.06 GEBÜHR EXPRESS CASH NUTZUNG"]
-    valid.each do | line |
+    valid.each do |line|
       assert AMREGEX[:text].match(line)
     end
-
-    def test_has_more_capital_letters
-      assert has_more_capital_letters("29.06 29.06 APPLE.COM/BILL          HOLLYHILL")
-    end
-
-    def test_has_more_capital_letters_false
-      line = "American Express Europe S.A. (Germany branch), Theodor-Heuss-Allee 112, 60486 Frankfurt a. M., Registergericht Frankfurt am Main, HRB 112342"
-      assert has_more_capital_letters(line)
-    end
-
   end
+
+  def test_amazon
+    line = "AMAZON.DE AMAZON.DEwww.americanexpress.de"
+    assert_equal "AMAZON.DE AMAZON.DE", extract_text(line)
+  end
+
+  def test_some_lower
+    line = "BANKOMAT Coop  SIMRISHAMN             SE"
+    assert_equal(line, extract_text(line))
+  end
+
+  def test_has_more_capital_letters
+    assert has_more_capital_letters("29.06 29.06 APPLE.COM/BILL          HOLLYHILL")
+  end
+
+  def test_has_more_capital_letters_false
+    line = "American Express Europe S.A. (Germany branch), Theodor-Heuss-Allee 112, 60486 Frankfurt a. M., Registergericht Frankfurt am Main, HRB 112342"
+    assert !has_more_capital_letters(line)
+  end
+
 end
+
 

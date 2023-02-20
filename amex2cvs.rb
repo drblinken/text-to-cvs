@@ -370,10 +370,9 @@ files.each do |filename|
     end
     write_header = false
   rescue Exception => e
-    logger.error("caught exception: #{e.message}")
-    puts "error parsing #{filename}"
-    puts e.message
-    puts e.backtrace.inspect
+    msg = "error parsing #{filename}\n" +e.message + "\n" + e.backtrace.inspect
+    logger.error(msg)
+    STDERR.puts msg
   end
 end
 #  puts "----------"

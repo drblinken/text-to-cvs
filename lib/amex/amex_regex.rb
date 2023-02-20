@@ -5,7 +5,7 @@ module AmexRegexp
   # Saldodeslaufenden Monats
   # text_re = '[A-Z][0-9 A-Z*.\/\+-]{2,}'
   #
-  text_re = '[A-Z][(0-9 A-Za-z*.\/\+-]{2,}'
+  text_re = '[A-Z][(0-9 A-Za-zäüö*.\/\+-]{2,}'
   text_re_upper_only = '[A-Z][(0-9 A-Z*.\/\+-]{2,}'
 
   def self.at_start_or_end(text_re)
@@ -85,14 +85,18 @@ module AmexRegexp
   end
 
   def extract_text(str)
+    return nil if /xxxx-xxxxxx.*Seite/.match(str)
     m_both = TEXT_RE_BOTH.match(str)
     m_caps = TEXT_RE_CAPS.match(str)
     return nil unless m_both
     text_both = m_both[1]
     return text_both if m_caps && (text_both == m_caps[1])
     return text_both if count_lower(text_both) < 4
+    # return nil if m_caps && /xxxx-xxxxxx.*Seite/.match(text_both[1])
     return text_both if has_more_capital_letters(text_both)
-    return m_caps[1] if m_caps && m_caps[1] != "HRB 112342"
+    return nil if m_caps && ["EUR","HRB 112342","US D"].include?(m_caps[1])
+    # return nil if /xxxx-xxxxxx.*Seite/.match(m_caps[1])
+    return m_caps[1] if m_caps
     return nil
   end
 end

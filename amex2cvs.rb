@@ -59,6 +59,7 @@ class Converter
     fill_texts
     @entries = @line_entries.flatten
     remove_payments
+    write_log
     run_checks
   end
 
@@ -233,7 +234,10 @@ class Converter
       sizes = collect_sizes
       # {:date=>[14, 21, 36], :amount=>[14, 21, 36], :text=>[14, 21, 36]}
       unless sizes.values.uniq.size == 1
-        STDERR.puts "slice lengths are unequal: #{sizes}"
+        msg = "#{@filename}: slice lengths are unequal: #{sizes}"
+        puts msg
+        logger.error(msg)
+        STDERR.puts msg
       end
     end
     def find_saldo

@@ -51,6 +51,32 @@ class RegexTextTest < Minitest::Test
     assert !has_more_capital_letters(line)
   end
 
+  def test_bla
+    line = "WirmöchtenSieanWeihnachtenerinnern. Bitte"
+    assert_nil extract_text(line)
+  end
+
+  def test_stuff
+    line = "Umsatz vom Buchungsdatum Details Betrag in Fremdwährung Betrag EUR"
+    assert_nil extract_text(line)
+  end
+
+  def test_dollars
+    line = "US Dollars47.99"
+    assert_nil extract_text(line)
+  end
+
+  def test_amazon_sucks
+    line = "DR BARNE RUDOLF KLEINEN xxxx-xxxxxx- 63008 11.08.21Seite  3 von 4"
+    assert_nil extract_text(line)
+  end
+
+  def test_amazon_sucks2
+    line = "DR BLINKEN xxxx-xxxxxx- 63008 11.08.21Seite  3 von 4"
+    assert_nil extract_text(line)
+  end
+
+
 end
 
 

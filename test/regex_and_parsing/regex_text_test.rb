@@ -69,8 +69,11 @@ class RegexTextTest < Minitest::Test
     line = "US Dollars47.99"
     assert_nil extract_text(line)
   end
-
-  def test_amazon_sucks
+  def test_CRSeite
+    line = "CRSeite2von4"
+    assert_nil extract_text(line)
+  end
+  def test_amex_sucks
     line = "DR BARNE RUDOLF KLEINEN xxxx-xxxxxx- 63008 11.08.21Seite  3 von 4"
     assert_nil extract_text(line)
   end

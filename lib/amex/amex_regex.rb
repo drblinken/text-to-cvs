@@ -120,6 +120,7 @@ module AmexRegexp
   end
 
   def extract_text(str)
+    return nil if /CRSeite\dvon\d/.match(str)
     return str if /(DorintGmbHDorintHoteBremen|OnlineStoreHUGOBOSSMetzingen)/.match(str)
     return nil if /(xxxx-xxxxxx.*Seite|EIGENVERTRIEB C|Flugstrecke|^Nach)/.match(str)
     if m = SALDO_SONSTIGE_RE.match(str)

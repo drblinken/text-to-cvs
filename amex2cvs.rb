@@ -65,10 +65,35 @@ class Converter
     end
   end
 
+  def add_lines_with_hints_to_slices
+    [:date, :text].each do | part |
+      lines_with_hints = @lines.select{|l| !l.hint.nil? && l.part.include?(part)}
+      puts lines_with_hints.inspect
+      lines_with_hints.each do | l |
+        hint = l.hint
+        slice, slice_i = hint.slice, hint.slice_i
+
+        debug = @slices[part][slice]
+        target_slice = (@slices[part][slice] ||= [])
+        logger.warn("#{part} slice had already an entry: #{hint}") if target_slice[slice_i]
+        target_slice[slice_i] = l.line_no
+
+        entry = retrieve_entry(slice,slice_i)
+        if part == :date
+          add_date_to_entry(l,entry,slice,slice_i)
+        else
+          text =extract_text(l.line)
+          add_text_to_entry(l,entry,slice, slice_i,text)
+        end
+      end
+    end
+  end
+
   def parse
     find_slices
     fill_amounts
     remove_cr_lines_from_dates
+    add_lines_with_hints_to_slices
     fill_dates
     fill_texts
     @entries = @line_entries.flatten
@@ -153,13 +178,15 @@ class Converter
   end
 
   def keep_slice?(a,threshold)
-    original_size = a.size
-    filename = @filename
-    return true if a.size >= threshold
-    return false if a.none?{ | line_no | !@lines[line_no].hint.nil? }
-    # ok, it is short but some lines have hints. only keep those!
-    a.reject!{ | line_no | @lines[line_no].hint.nil? }
-    return true
+    return a.size >= threshold
+
+   #  original_size = a.size
+   #  filename = @filename
+   #  return true if a.size >= threshold
+   #  return false if a.none?{ | line_no | !@lines[line_no].hint.nil? }
+   #  # ok, it is short but some lines have hints. only keep those!
+   #  a.reject!{ | line_no | @lines[line_no].hint.nil? }
+   #  return true
   end
 
   def inject
@@ -265,18 +292,7 @@ class Converter
         m = re_match(:date, line.line)
         if m
           entry = retrieve_entry(slice_no, index_in_slice)
-          line.entry = entry
-          line.slice = slice_no
-          line.slice_i = index_in_slice
-
-          entry.lines << line
-          entry.date = "#{m[2]}.#{YEAR}"
-          entry.value_date ="#{m[3]}.#{YEAR}"
-          # puts
-          # puts "-------- fill_dates ----------"
-          # puts entry.inspect
-          # puts line.inspect
-          # puts
+          add_date_to_entry(line, entry, slice_no, index_in_slice,  m)
         else
           STDERR.puts("ERROR: found no date in fill_dates: #{line.line}")
         end
@@ -292,16 +308,7 @@ class Converter
         text =extract_text(line.line)
         if text
           entry = retrieve_entry(slice_no, index_in_slice)
-          line.entry = entry
-          line.slice = slice_no
-          line.slice_i = index_in_slice
-          entry.lines << line
-          entry.text = text
-          # puts
-          # puts "-------- fill_texts ----------"
-          # puts entry.inspect
-          # puts line.inspect
-          # puts
+          add_text_to_entry( line,entry, slice_no, index_in_slice, text)
         else
           STDERR.puts("ERROR: found no text in fill_texts: #{line.line}")
         end
@@ -447,6 +454,26 @@ class Converter
   def timestamp
     require 'date'
     DateTime.now.strftime("Printed on %d.%m.%Y at %H:%M:%S")
+  end
+
+  private
+
+  def add_text_to_entry(line, entry, slice_no, slice_i, text)
+    line.entry = entry
+    line.slice = slice_no
+    line.slice_i = slice_i
+    entry.lines << line
+    entry.text = text
+  end
+
+  def add_date_to_entry(line, entry, slice_no, slice_i, m = nil)
+    m = re_match(:date, line.line) unless m
+    line.entry = entry
+    line.slice = slice_no
+    line.slice_i = slice_i
+    entry.lines << line
+    entry.date = "#{m[2]}.#{YEAR}"
+    entry.value_date = "#{m[3]}.#{YEAR}"
   end
 end
 

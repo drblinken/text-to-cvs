@@ -33,6 +33,7 @@ class Converter
 
     @@re_cr = /CR/
     @@re_saldo = /Saldo.*laufenden.* ([\.\d]+,\d\d)/
+    @@re_other_saldo_text = /Saldo.*sonstige.*Transaktionen/
     @@re_other_saldo = /Saldo.*sonstige.*Transaktionen ([\.\d]+,\d\d)/
     @parts = Converter::AMREGEX.keys
     @line_entries = []
@@ -44,18 +45,22 @@ class Converter
   end
 
   # no longer needed?
-  def remove_payments
+  def mark_payments
     @entries.each do |entry|
       if is_payment(entry.text)
-        entry.text = "#{entry.text} - #{entry.amount}"
-        entry.amount = 0
+        entry.saldo = true
+        # entry.text = "#{entry.text} - #{entry.amount}"
+        # entry.amount = 0
       end
     end
+    puts @entries.size
+
   end
   def mark_empty_texts
     @entries.each do |entry|
       if entry.text.nil? || entry.text == ""
-        entry.text = "TBD: Text could not be mapped (orphan?)"
+        text_in_amount = extract_text(entry.lines[0].line)
+        entry.text = text_in_amount || "TBD: Text could not be mapped (orphan?)"
       end
     end
   end
@@ -67,8 +72,8 @@ class Converter
     fill_dates
     fill_texts
     @entries = @line_entries.flatten
-    # remove_payments
     mark_empty_texts
+    mark_payments
     write_log
     run_checks
   end
@@ -316,6 +321,10 @@ class Converter
   end
 
   def find_other_saldo
+
+    os_entries = @entries.select{|le| @@re_other_saldo_text.match(le.text)}
+    logger.warn("@entries contains more than one line with other saldo size: #{os_entries.size}") if os_entries.size > 1
+    return os_entries[0].amount if os_entries.size > 0
     candidates = @lines.map do |l|
       m = @@re_other_saldo.match(l.line)
       m ? parse_amount(m[1]) : nil
@@ -350,7 +359,7 @@ class Converter
   def check_balance_saldo
     saldo_statement = find_saldo
     other_saldo_statement = find_other_saldo
-    saldo_computed = @entries.map { |e| is_payment(e.text) ? 0 : e.amount }.reduce(&:+)
+    saldo_computed = @entries.map { |e| e.saldo ? 0 : e.amount }.reduce(&:+)
 
     # expr = "saldo_statement = saldo + other_saldo"
     expr = "saldo_diff = saldo_statement + other_saldo_statement - saldo_computed"
@@ -358,21 +367,24 @@ class Converter
   end
 
   def check_smoke_test
+    entries_to_use = @entries.select{ |e| !@@re_other_saldo_text.match(e.text) }
+    puts entries_to_use.inspect
+    puts entries_to_use.size
     # this tests various sums
     gutschriften, belastungen = find_summary
     gutschriften_statement = gutschriften.abs
     belastungen_statement = belastungen.abs
 
-    abs_sum_computed = @entries.map { |e| e.amount.abs }.reduce(&:+)
+    abs_sum_computed = entries_to_use.map { |e| e.amount.abs }.reduce(&:+)
     expr = "abs_diff =  gutschriften + belastungen - abs_sum_computed"
-    check_for_zero("smoketest only positive values ",expr,binding)
+    check_for_zero("smoketest sum absolute values ",expr,binding)
 
-    sum_gutschriften_computed = @entries.map { |e| e.amount < 0 ? e.amount.abs : 0 }.reduce(&:+)
-    sum_belastungen_computed = @entries.map { |e| e.amount > 0 ? e.amount.abs : 0 }.reduce(&:+)
+    sum_gutschriften_computed = entries_to_use.map { |e| e.amount < 0 ? e.amount.abs : 0 }.reduce(&:+)
+    sum_belastungen_computed = entries_to_use.map { |e| e.amount > 0 ? e.amount.abs : 0 }.reduce(&:+)
     expr = "diff_belastungen = belastungen_statement - sum_belastungen_computed"
-    check_for_zero("smoketest belastungen",expr,binding)
+    check_for_zero("summe belastungen",expr,binding)
     expr = "diff_gutschriften = gutschriften_statement - sum_gutschriften_computed"
-    check_for_zero("smoketest gutschriften",expr,binding)
+    check_for_zero("summe gutschriften",expr,binding)
   end
 
   def check_balance
@@ -381,7 +393,6 @@ class Converter
   end
 
   def run_checks
-    puts "..."
     check_slice_sizes
     check_balance
   end
@@ -393,7 +404,8 @@ class Converter
       header = AmexEntry.cvs_header. << "file name"
       result << header.join(DEL)
     end
-    values = @line_entries.flatten.map { |e| (e.cvs_values.append(@filename)).join(DEL) }
+    # values = @line_entries.flatten.map { |e| (e.cvs_values.append(@filename)).join(DEL) }
+    values = @entries.map { |e| (e.cvs_values.append(@filename)).join(DEL) }
     result.append(*values)
     result.join("\n") + "\n"
   end

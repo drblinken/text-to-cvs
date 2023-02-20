@@ -19,6 +19,9 @@ class TestAmexRegex < Minitest::Test # MiniTest::Unit::TestCase
   def test_payment_received
     assert is_payment("ZAHLUNG ERHALTEN. BESTEN DANK.")
   end
+  def test_saldo_sonstiges
+    assert is_payment("Saldosonstige Transaktionen")
+  end
 
 
 end

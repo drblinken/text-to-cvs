@@ -93,7 +93,7 @@ module AmexRegexp
     end
   end
 
-  PAYMENT_REGEX = /ZAHLUNG ERHALTEN. BESTEN DANK./
+  PAYMENT_REGEX = /ZAHLUNG ERHALTEN. BESTEN DANK.|Saldosonstige Transaktionen/
 
   def is_payment(str)
     PAYMENT_REGEX =~ str

@@ -14,6 +14,7 @@ module AmexRegexp
 
   TEXT_RE_CAPS = at_start_or_end(text_re_upper_only)
   TEXT_RE_BOTH = at_start_or_end(text_re)
+  SALDO_SONSTIGE_RE = /Saldo\s*sonstige\s*Transaktionen/
 
   AMREGEX = { date: /((\d\d\.\d\d)\s?(\d\d\.\d\d))|(CR$)/,
               amount: /^(Hinweise zu Ihrer Kartenabrechnung)?(([\.\d]+,\d\d)|(Saldo\s?des\s?laufenden Monats|Sonstige Transaktionen|CR))/,
@@ -32,6 +33,8 @@ module AmexRegexp
     m = AMREGEX[:amount].match(str)
     is_noise = !m[4].nil?
     logger.debug("---noise #{is_noise}: #{m.inspect} --#{str}") if logger
+    is_noise = is_noise || SUMMARY_REGEX.match(str)
+    is_noise = is_noise || /Saldodeslaufenden Monatsfür/.match(str)
     is_noise
   end
 

@@ -11,12 +11,27 @@ class TestAmountRegex < Minitest::Test # MiniTest::Unit::TestCase
     ignore_lines: []
   }
 
-  def test_match
+  def test_match_amount
     m = AMREGEX[:amount]
 
     @@expectations[:match_lines].each do |line|
       assert(re_match(:amount,line),"should match line: #{line}")
     end
+  end
+
+  def test_dismiss_amount
+    line = "Saldodeslaufenden MonatsfürDRBLINKEN XXX 192,83"
+    assert_true is_amount_noise(line, nil)
+  end
+
+  def test_dismiss_summary
+    line = "1.126,20 -1.154,12 + 864,82 = 836,90"
+    assert is_amount_noise(line, nil)
+  end
+
+  def test_dismiss_amount
+    line = "Saldodeslaufenden MonatsfürDRBLINKEN XXX 192,83"
+    is_amount_noise(line)
   end
 
   def test_extract_amount

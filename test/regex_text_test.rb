@@ -56,6 +56,10 @@ class RegexTextTest < Minitest::Test
     assert_nil extract_text(line)
   end
 
+  def test_not_one
+    line = "AUDIBLE GMBH*MU83C8JH4 AUDIBLE.DE/RG"
+    assert_equal line, extract_text(line)
+  end
   def test_stuff
     line = "Umsatz vom Buchungsdatum Details Betrag in Fremdwährung Betrag EUR"
     assert_nil extract_text(line)
